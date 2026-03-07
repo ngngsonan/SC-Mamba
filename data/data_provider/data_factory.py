@@ -1,6 +1,6 @@
 from argparse import Namespace
 from os import sep
-from benchmark.data_provider.data_loader import Dataset_GluonTS
+from data.data_provider.data_loader import Dataset_GluonTS
 from torch.utils.data import DataLoader
 
 data_dict = {
