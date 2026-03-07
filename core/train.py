@@ -2,6 +2,7 @@
 Module to train the model
 """
 import sys
+import os
 from pathlib import Path
 
 # Get the directory of the current script
