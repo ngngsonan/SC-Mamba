@@ -16,3 +16,6 @@ pandas
 numpy
 pyyaml
 submitit
+wandb
+torchmetrics
+gpytorch

@@ -1,0 +1,23 @@
+# URI prefix to the folder where datasets are going to be saved and loaded
+prefix: ../../data
+
+# version of the dataset
+version: fp_train_dataset_300_1m
+
+# (required) whether to use sub day timestamps or not
+subday: false
+
+# whether to use phase transitions or not (default: false)
+transition: true
+
+# number of series to generate
+num_series: 1000000
+
+#series length
+size: 300
+
+options:
+  # fraction of time series to keep as linear random walk series
+  linear_random_walk_frac: 0
+  # for testing cases, we only try on sinusoidal data
+  seasonal_only: false
