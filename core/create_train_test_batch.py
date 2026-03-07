@@ -325,13 +325,14 @@ class GenerativeDataset(IterableDataset):
 
         # choose random time series samples to add damping and spikes
         damping_ratio, spike_ratio = np.random.uniform(0, self.damping_noise_ratio), np.random.uniform(0, self.spike_noise_ratio)
-        damping_indices = np.random.choice(self.batch_size, int(self.batch_size * damping_ratio), replace=False)
-        if len(damping_indices) > 0:
+        n_damping = int(self.batch_size * damping_ratio)
+        if n_damping > 0:
+            damping_indices = np.random.choice(self.batch_size, n_damping, replace=False)
             combined_samples[damping_indices, :,-1] = np.stack([x * generate_damping(x.shape[0]).numpy() for x in combined_samples[damping_indices, :,-1]], axis=0)
-        
         # apply damping to each one in the following manner lambda x: x * damping(x)
-        spike_indices = np.random.choice(self.batch_size, int(self.batch_size * spike_ratio), replace=False)
-        if len(spike_indices) > 0:
+        n_spikes = int(self.batch_size * spike_ratio)
+        if n_spikes > 0:
+            spike_indices = np.random.choice(self.batch_size, n_spikes, replace=False)
             spiked_samples = []
             for x in combined_samples[spike_indices, :,-1]:
                 spike = generate_spikes(x.shape[0]).numpy()
@@ -339,8 +340,9 @@ class GenerativeDataset(IterableDataset):
             combined_samples[spike_indices, :,-1] = np.stack(spiked_samples, axis=0)
         
         if np.random.rand() < self.spike_signal_ratio:
-            spike_replace_indices = np.random.choice(self.batch_size, int(self.batch_size * self.spike_batch_ratio), replace=False)
-            if len(spike_replace_indices) > 0:
+            n_replace = int(self.batch_size * self.spike_batch_ratio)
+            if n_replace > 0:
+                spike_replace_indices = np.random.choice(self.batch_size, n_replace, replace=False)
                 combined_samples[spike_replace_indices, :,-1] = np.stack([generate_spikes(x.shape[0]).numpy() for x in combined_samples[spike_replace_indices, :,-1]], axis=0)
         
         """end test"""
