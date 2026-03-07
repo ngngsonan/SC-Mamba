@@ -389,10 +389,12 @@ def main_evaluator(pred_style=None, model_name=DEFAULT_MODEL_NAME):
     if pred_style is None:
         pred_style = real_data_args['pred_style']
 
-    model_string = f'../../models/{model_name}.pth'
-
-    if not os.path.exists(f'../../data/real_data_evals/{model_name}/{pred_style}'):
-        os.makedirs(f'../../data/real_data_evals/{model_name}/{pred_style}', exist_ok=True)
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    model_string = os.path.join(base_dir, f'../models/{model_name}.pth')
+    
+    eval_dir = os.path.join(base_dir, f'../data/real_data_evals/{model_name}/{pred_style}')
+    if not os.path.exists(eval_dir):
+        os.makedirs(eval_dir, exist_ok=True)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
@@ -410,7 +412,8 @@ def main_evaluator(pred_style=None, model_name=DEFAULT_MODEL_NAME):
         
         res_dict = {}
         print(f'pred_style: {pred_style}')
-        if not os.path.exists(f'../../data/real_data_evals/{model_name}/{pred_style}/{dataset_name}_{MAX_LENGTH}.yml'):
+        yml_path = os.path.join(eval_dir, f'{dataset_name}_{MAX_LENGTH}.yml')
+        if not os.path.exists(yml_path):
             pred_lens = [REAL_DATASETS[dataset_name]] #range(1, REAL_DATASETS[dataset_name]+1)
             for cl in context_lens:
                 for pl in pred_lens:
@@ -422,14 +425,14 @@ def main_evaluator(pred_style=None, model_name=DEFAULT_MODEL_NAME):
                     print(f"Time taken by {pred_style}: {end_time - start_time}")
                     #saving train and pred dfs if its max pred_len of entire series
                     if pl == REAL_DATASETS[dataset_name]:
-                        train_df.to_csv(f'../../data/real_data_evals/{model_name}/{pred_style}/{dataset_name}_train_df_{cl}_{pl}.csv', index=False)
-                        pred_df.to_csv(f'../../data/real_data_evals/{model_name}/{pred_style}/{dataset_name}_pred_df_{cl}_{pl}.csv', index=False)
+                        train_df.to_csv(os.path.join(eval_dir, f'{dataset_name}_train_df_{cl}_{pl}.csv'), index=False)
+                        pred_df.to_csv(os.path.join(eval_dir, f'{dataset_name}_pred_df_{cl}_{pl}.csv'), index=False)
         
-            with open(f'../../data/real_data_evals/{model_name}/{pred_style}/{dataset_name}_{MAX_LENGTH}.yml', 'w') as outfile:
+            with open(yml_path, 'w') as outfile:
                 yaml.dump(res_dict, outfile, default_flow_style=True)
             
             # Specify the file name
-            filename = f'../../data/real_data_evals/{model_name}/{pred_style}/{dataset_name}_{MAX_LENGTH}.csv'
+            filename = os.path.join(eval_dir, f'{dataset_name}_{MAX_LENGTH}.csv')
 
             # Write the dictionary to the CSV file
             csv_writer(filename, res_dict)
@@ -442,7 +445,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     model_name = args.model_name
-    directory = f'../../data/real_data_evals/{model_name}'
+    script_basedir = os.path.dirname(os.path.abspath(__file__))
+    directory = os.path.join(script_basedir, f'../data/real_data_evals/{model_name}')
     if not os.path.exists(directory):
         os.makedirs(directory, exist_ok=True)
     print(args.slurm)
@@ -451,7 +455,7 @@ if __name__ == '__main__':
         global ex
         global q
         maximum_runtime = 0
-        log_folder = '../logs/'
+        log_folder = os.path.join(script_basedir, '../logs/')
         maximum_runtime = set_queue('mlhiwi', log_folder)
         submit_func = ex.submit
         job = submit_func(main_evaluator, model_name=model_name)

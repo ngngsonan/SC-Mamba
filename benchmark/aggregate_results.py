@@ -4,7 +4,9 @@ import yaml
 import glob
 import argparse
 
-def aggregate_results(models_to_evaluate, base_dir="../../data/real_data_evals"):
+def aggregate_results(models_to_evaluate, base_dir=None):
+    if base_dir is None:
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data/real_data_evals"))
     """
     Reads evaluation dictionaries for specified baseline and ablation models, 
     and outputs a compiled CSV table representing "Table 3" from Mamba4cast.
@@ -49,8 +51,9 @@ def aggregate_results(models_to_evaluate, base_dir="../../data/real_data_evals")
         pivot_mase = df.pivot(index='Dataset', columns='Model', values='MASE')
         print("\n=== Table 3 (MASE) Equivalent ===")
         print(pivot_mase.to_string())
-        pivot_mase.to_csv("table3_mase_benchmark.csv")
-        print("\nSaved Table 3 MASE results to: benchmark/table3_mase_benchmark.csv")
+        out_mase = os.path.join(os.path.dirname(os.path.abspath(__file__)), "table3_mase_benchmark.csv")
+        pivot_mase.to_csv(out_mase)
+        print(f"\nSaved Table 3 MASE results to: {out_mase}")
     except Exception as e:
         print(f"Error pivoting MASE: {e}")
         
@@ -59,8 +62,9 @@ def aggregate_results(models_to_evaluate, base_dir="../../data/real_data_evals")
         pivot_nll = df.pivot(index='Dataset', columns='Model', values='CRPS_Proxy_NLL')
         print("\n=== Uncertainty Benchmark (NLL) ===")
         print(pivot_nll.to_string())
-        pivot_nll.to_csv("table4_nll_benchmark.csv")
-        print("Saved Uncertainty results to: benchmark/table4_nll_benchmark.csv")
+        out_nll = os.path.join(os.path.dirname(os.path.abspath(__file__)), "table4_nll_benchmark.csv")
+        pivot_nll.to_csv(out_nll)
+        print(f"Saved Uncertainty results to: {out_nll}")
     except Exception as e:
         pass
 

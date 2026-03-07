@@ -16,9 +16,10 @@ echo "==========================================================="
 echo ""
 
 # Configuration variables
-CORE_DIR="../core"
-DATA_DIR="../../data"
-RESULTS_DIR="../../data/real_data_evals"
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+CORE_DIR="$SCRIPT_DIR/../core"
+DATA_DIR="$SCRIPT_DIR/../data"
+RESULTS_DIR="$SCRIPT_DIR/../data/real_data_evals"
 
 # Model instances to test
 SC_MAMBA_MAIN="sc_mamba_main_v1"
@@ -55,16 +56,7 @@ echo ""
 
 echo "[4/4] Aggregating Results for Quantitative Analysis (Table 3 Generation)..."
 # Move to benchmark directory to run insights script
-cd ../benchmark || exit
-cat << 'EOF' > aggregate_results.py
-import os
-import pandas as pd
-
-# Dummy aggregation script to represent Table 3 generation
-print("Generating Table 3: MASE & CRPS evaluations on 17 datasets...")
-# Logic to read all CSVs in ../../data/real_data_evals/ and merge them would go here
-print("Table 3 saved to benchmark/results_table_3.csv")
-EOF
+cd "$SCRIPT_DIR" || exit
 
 python aggregate_results.py
 
