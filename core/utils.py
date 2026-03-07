@@ -5,11 +5,13 @@ import torch.nn.functional as F
 from torch import mode, nn
 import torch
 import torchmetrics
+import inspect
+import math
 import sys
-sys.path.append('../')
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from torch.optim.lr_scheduler import LRScheduler
 from training.scalers import custom_scaler_robust, identity_scaler, min_max_scaler
-import math
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.pyplot as plt

@@ -11,9 +11,9 @@ current_dir = Path(__file__).parent
 parent_dir = current_dir.parent
 
 # Add the root directory to the sys.path to access 'data' natively
-sys.path.append(str(parent_dir))
+# Using a robust absolute path for sys.path.append
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import os
 import wandb
 import torchmetrics
 import yaml

@@ -3,11 +3,24 @@ from numpy import block
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from einops import rearrange
 import sys
-sys.path.append('../')
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+try:
+    from mamba_ssm import Mamba, Mamba2
+except ImportError:
+    print("Mamba-SSM not installed, using dummy Mamba class.")
+    class Mamba(nn.Module):
+        def __init__(self, d_model, d_state=16, d_conv=4, expand=2):
+            super().__init__()
+            self.d_model = d_model
+        def forward(self, x):
+            return x
+    class Mamba2(Mamba):
+        pass
 from training.utils import PositionExpansion, CustomScaling, SimpleRMSNorm
 from training.constants import *
-from mamba_ssm import Mamba, Mamba2
 import math
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

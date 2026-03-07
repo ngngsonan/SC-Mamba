@@ -1,9 +1,8 @@
 from turtle import end_fill
 import torch
-import os
 import sys
-sys.path.append('..')
-import numpy as np
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import pandas as pd
 import yaml
 import argparse

@@ -6,14 +6,8 @@ from re import sub
 import sys
 import os
 
-# Get the directory of the current file
-current_file_directory = os.path.dirname(os.path.abspath(__file__))
-
-# Get the parent directory
-parent_directory = os.path.dirname(current_file_directory)
-
-# Append the parent directory to sys.path
-sys.path.append(parent_directory)
+# Append the parent directory to sys.path using a robust absolute path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 
 import torch
