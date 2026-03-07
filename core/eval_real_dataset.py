@@ -35,6 +35,26 @@ REAL_DATASETS = {
     "tourism_quarterly": 8,
 }
 
+REAL_DATASET_ASSETS = {
+    "nn5_daily_without_missing": 111,
+    "nn5_weekly": 111,
+    "covid_deaths": 108,
+    "weather": 21,
+    "hospital": 767,
+    "fred_md": 107,
+    "car_parts_without_missing": 2674,
+    "traffic": 862,
+    "m3_monthly": 1428,
+    "ercot": 39,
+    "m1_monthly": 617,
+    "m1_quarterly": 203,
+    "cif_2016": 72,
+    "exchange_rate": 8,
+    "m3_quarterly": 756,
+    "tourism_monthly": 366,
+    "tourism_quarterly": 427,
+}
+
 MAX_LENGTH = 512
 
 ssm_config = {
@@ -376,21 +396,18 @@ def main_evaluator(pred_style=None, model_name=DEFAULT_MODEL_NAME):
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
-    if real_data_args.get('num_assets') is None:
-        raise ValueError("num_assets must be provided in config for Spectral Causal filtering.")
-        
-    model = SCMamba_Forecaster(
-        N_assets=real_data_args['num_assets'], 
-        ssm_config=ssm_config
-    ).to(device)
-    
-    new_state_dict = adapt_state_dict_keys(torch.load(model_string, map_location=device)['model_state_dict'])
-    # Filtering strict loading to avoid unmatched dimension issues temporarily
-    model.load_state_dict(new_state_dict, strict=False)
-    
+    new_state_dict = adapt_state_dict_keys(torch.load(model_string, map_location=device)['model_state_dict'])    
     context_lens = [512]
     
     for dataset_name in REAL_DATASETS.keys():
+        
+        n_assets = REAL_DATASET_ASSETS.get(dataset_name, 1)
+        model = SCMamba_Forecaster(
+            N_assets=n_assets, 
+            ssm_config=ssm_config
+        ).to(device)
+        model.load_state_dict(new_state_dict, strict=False)
+        
         res_dict = {}
         print(f'pred_style: {pred_style}')
         if not os.path.exists(f'../../data/real_data_evals/{model_name}/{pred_style}/{dataset_name}_{MAX_LENGTH}.yml'):
