@@ -19,8 +19,8 @@ except ImportError:
             return x
     class Mamba2(Mamba):
         pass
-from training.utils import PositionExpansion, CustomScaling, SimpleRMSNorm
-from training.constants import *
+from core.utils import PositionExpansion, CustomScaling, SimpleRMSNorm
+from core.constants import *
 import math
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

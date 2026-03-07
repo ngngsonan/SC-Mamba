@@ -4,9 +4,9 @@ import torch.nn.functional as F
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from training.utils import PositionExpansion, CustomScaling
-from training.constants import *
-from training.blocks import *
+from core.utils import PositionExpansion, CustomScaling
+from core.constants import *
+from core.blocks import *
 import numpy as np
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
