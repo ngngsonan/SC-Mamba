@@ -315,7 +315,7 @@ class GenerativeDataset(IterableDataset):
         """to test here"""
         
         if np.random.rand() < self.mixup_prob:
-            mixup_series = np.random.randint(2, self.mixup_max)
+            mixup_series = np.random.randint(2, max(3, self.mixup_max + 1))
             mixup_indices = np.random.choice(self.batch_size, mixup_series, replace=False)
             for i in mixup_indices:
                 mixup_weights = np.random.rand(mixup_series)
