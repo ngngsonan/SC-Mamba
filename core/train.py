@@ -157,7 +157,7 @@ def train_model(config):
             
             pred_len = target.size(1)
             optimizer.zero_grad()
-            if isinstance(model, SSMModelMulti):
+            if isinstance(model, SCMamba_Forecaster):
                 drop_enc_allow = True
                 if config["sample_multi_pred"] > np.random.rand():
                     drop_enc_allow = False

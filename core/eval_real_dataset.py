@@ -144,7 +144,7 @@ def auto_regressive_predict(model, batch_x, batch_y, batch_x_mark, batch_y_mark,
         for pred_ind in range(0, eval_pred_len):
             x['target_dates'] = batch_y_mark[:, pred_ind].unsqueeze(1).to(device)
             x['task'] = dec_inp[:, pred_ind].unsqueeze(1)
-            multipoint = isinstance(model, SSMModelMulti)
+            multipoint = isinstance(model, SCMamba_Forecaster)
             if multipoint:
                 output = model(x, prediction_length=1)
             else:
@@ -202,7 +202,7 @@ def efficient_ensemble_predict(model, batch_x, batch_x_mark, batch_y_mark, pred_
     cl = x["history"].size(1)
     
     drops = np.linspace(0,cl*ensemble_config["max_fraction"], ensemble_config["num_ensembles"]).astype(int)
-    assert isinstance(model, SSMModelMulti), "Model must be an instance of SSMModelMulti"
+    assert isinstance(model, SCMamba_Forecaster), "Model must be an instance of SCMamba_Forecaster"
   
     outputs = []
     z = x.copy()
@@ -234,7 +234,7 @@ def ensemble_predict(model, batch_x, batch_x_mark, batch_y_mark, pred_len, scale
     cl = x["history"].size(1)
     
     drops = np.linspace(0,cl*ensemble_config["max_fraction"], ensemble_config["num_ensembles"]).astype(int)
-    assert isinstance(model, SSMModelMulti), "Model must be an instance of SSMModelMulti"
+    assert isinstance(model, SCMamba_Forecaster), "Model must be an instance of SCMamba_Forecaster"
   
     outputs = []
     z = {}
