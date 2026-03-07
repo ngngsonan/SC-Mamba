@@ -12,7 +12,7 @@ import numpy as np
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class SC_SSMModelBackbone(nn.Module):
-    """
+    r"""
     Modified SSMModelNoPos from Mamba4Cast (Channel-Independent Backbone).
     Instead of projecting to a final 1D scalar (y_pred), it returns the dense 
     temporal embeddings for all assets Z \in R^{B \times N \times P_L \times D_model}.
@@ -209,7 +209,7 @@ class SpectralVariationalLayer(nn.Module):
         
 
 class SCMamba_Forecaster(nn.Module):
-    """
+    r"""
     Main Pipeline Wrapper combining Mamba4Cast backbone and SpectralVariationalLayer.
     Produces both Point Estimate (\mu) and Uncertainty (\sigma^2) for NLL loss.
     """
