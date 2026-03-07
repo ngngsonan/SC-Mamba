@@ -398,7 +398,13 @@ def main_evaluator(pred_style=None, model_name=DEFAULT_MODEL_NAME):
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
-    new_state_dict = adapt_state_dict_keys(torch.load(model_string, map_location=device)['model_state_dict'])    
+    if not os.path.exists(model_string):
+        print(f"\n[ERROR] Pretrained weights not found: {model_string}", file=sys.stderr)
+        print("Please ensure you have trained the model or downloaded the pretrained checkpoint.", file=sys.stderr)
+        print(f"Expected location: {os.path.abspath(model_string)}\n", file=sys.stderr)
+        sys.exit(1)
+        
+    new_state_dict = adapt_state_dict_keys(torch.load(model_string, map_location=device, weights_only=True)['model_state_dict'])    
     context_lens = [512]
     
     for dataset_name in REAL_DATASETS.keys():
