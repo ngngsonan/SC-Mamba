@@ -26,7 +26,7 @@ import time
 import pprint
 import time
 import pprint
-from models_sc import SCMamba_Forecaster  # Modified for SC-Mamba
+from core.models import SCMamba_Forecaster  # Modified for SC-Mamba
 from create_train_test_batch import create_train_test_batch_dl
 from real_data_val_pipeline import validate_on_real_dataset
 from utils import SMAPEMetric, generate_model_save_name, avoid_constant_inputs
