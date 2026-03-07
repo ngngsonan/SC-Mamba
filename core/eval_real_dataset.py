@@ -361,7 +361,8 @@ def csv_writer(csv_file, result_dict):
 
 def main_evaluator(pred_style=None, model_name=DEFAULT_MODEL_NAME):
     
-    with open('./real_data_args.yaml') as file:
+    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'real_data_args.yaml')
+    with open(config_path) as file:
         real_data_args = yaml.load(file, yaml.loader.SafeLoader)
     real_data_args["model_name"] = model_name
 

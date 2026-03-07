@@ -1,0 +1,21 @@
+separate_dataset: true
+
+flag: test
+
+seq_len: 0
+
+label_len: 0
+
+features: S
+
+target: target
+
+scale: false
+
+batch_size: 1
+
+pad: false
+
+num_workers: 10
+
+auto_regressive: false
