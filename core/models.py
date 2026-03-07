@@ -37,7 +37,7 @@ class SC_SSMModelBackbone(nn.Module):
             block_expansion=2,
             **kwargs
         ):
-        super().__init__(**kwargs)
+        super().__init__()
         self.epsilon = epsilon
         self.scaler = CustomScaling(scaler)
         self.embed_size = embed_size
