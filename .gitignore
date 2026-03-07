@@ -1,0 +1,9 @@
+logs/
+data/
+*.png
+*.pth
+.ipynb_checkpoints/
+__pycache__/
+wandb/
+AutogluonModels/
+.vscode/
