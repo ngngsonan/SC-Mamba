@@ -94,17 +94,23 @@ def train_model(config):
         optimizer = optim.AdamW(model.parameters(), lr=config['learning_rate'])
 
     initial_epoch = 0
-    # Load state dicts if we are resuming training
+    best_val_loss = float('inf')
+    # Load state dicts if we are resuming training — prefer best checkpoint over periodic save
     config['model_save_name'] = generate_model_save_name(config)
-    if config['continue_training'] and os.path.exists(f"{config['model_prefix']}/{config['model_save_name']}.pth"):
-        print(f'loading previous training states from: {config["model_save_name"]}')
-        ckpt = torch.load(f"{config['model_prefix']}/{config['model_save_name']}.pth", map_location=device)
+    best_ckpt_path = f"{config['model_prefix']}/{config['model_save_name']}_best.pth"
+    periodic_ckpt_path = f"{config['model_prefix']}/{config['model_save_name']}.pth"
+    resume_path = best_ckpt_path if os.path.exists(best_ckpt_path) else periodic_ckpt_path
+    if config['continue_training'] and os.path.exists(resume_path):
+        print(f'loading previous training states from: {resume_path}')
+        ckpt = torch.load(resume_path, map_location=device)
         # load states
         model.load_state_dict(ckpt['model_state_dict'])
         optimizer.load_state_dict(ckpt['optimizer_state_dict'])
-        if config['lr_scheduler'] == "cosine":
+        if config['lr_scheduler'] == 'cosine' and ckpt.get('scheduler_state_dict') is not None:
             scheduler.load_state_dict(ckpt['scheduler_state_dict'])
-        initial_epoch = ckpt['epoch']
+        initial_epoch = ckpt['epoch'] + 1
+        best_val_loss = ckpt.get('best_val_loss', float('inf'))
+        print(f'Resuming from epoch {initial_epoch}, best_val_loss={best_val_loss:.4f}')
     else:
         print('no previous training states found, starting fresh')
         model = model.to(device)
@@ -293,6 +299,20 @@ def train_model(config):
         val_mape.reset()
         val_mse.reset()
         val_smape.reset()
+
+        # Save best checkpoint whenever validation improves
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+            best_ckpt = {
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'scheduler_state_dict': scheduler.state_dict() if config['lr_scheduler'] == 'cosine' else None,
+                'epoch': epoch,
+                'best_val_loss': best_val_loss,
+            }
+            os.makedirs(config['model_prefix'], exist_ok=True)
+            torch.save(best_ckpt, f"{config['model_prefix']}/{config['model_save_name']}_best.pth")
+            print(f'  🏆 Best checkpoint saved (epoch {epoch+1}, val_loss={best_val_loss:.4f})')
 
         if epoch % config['real_test_interval'] == config['real_test_interval'] - 1:
             res_dict = {'real_dataset_metrics': {'mase':{}, 'mae':{}, 'rmse':{}, 'smape':{}}, 'epoch': epoch}
