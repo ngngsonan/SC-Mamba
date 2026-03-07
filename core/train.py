@@ -176,9 +176,9 @@ def train_model(config):
                     data['target_dates'] = data['target_dates'][:, start_pred:end_pred].contiguous()
                     data['complete_target'] = data['complete_target'][:, start_pred:end_pred].contiguous()
                     data['task'] = data['task'][:, start_pred:end_pred].contiguous()
-                output = model(data, pred_len, training=True, drop_enc_allow=drop_enc_allow)
-            # SCMamba outputs a dictionary with 'mu', 'sigma2', 'kl_loss', 'scale'
-            output = model(data, prediction_length=pred_len)
+                output = model(data, prediction_length=pred_len)
+            else:
+                output = model(data, prediction_length=pred_len)
 
             if config['scaler'] == 'min_max':
                 max_scale = output['scale'][0].squeeze(-1)
