@@ -58,9 +58,8 @@ ssm_config = {
     "residual":False,
     "token_embed_len":1024,
 }
-model_name = "latest_mi_2l_1024e_nores_30-512cl_m2_norm_dconv_i5e5_lr1e-07_mp0.5_initlr1e-05_t300r_pm0.7_nPer_pl10-60_subday_subfreq0.2_perfreq0.5_d0.05_s0.05"
-model_string = f'../../models/{model_name}.pth'
-sub_day = "subday" in model_name
+# model_name and sub_day will be parsed logically or passed dynamically
+DEFAULT_MODEL_NAME = "latest_mi_2l_1024e_nores_30-512cl_m2_norm_dconv_i5e5_lr1e-07_mp0.5_initlr1e-05_t300r_pm0.7_nPer_pl10-60_subday_subfreq0.2_perfreq0.5_d0.05_s0.05"
 
 def set_queue(q_, log_folder, maximum_runtime=None):
     global ex
@@ -257,6 +256,9 @@ def evaluate_real_dataset(dataset: str, model, scaler, context_len, eval_pred_le
     pred_len = REAL_DATASETS[dataset]
     real_data_args['data'] = dataset
     real_data_args['pred_len'] = pred_len
+    
+    # Extract sub_day from model_name dynamically
+    sub_day = "subday" in real_data_args.get("model_name", "")
     test_dataset, test_dataloader = data_provider(real_data_args, real_data_args['flag'], subday=sub_day)
 
     gts_dataset = get_dataset(real_data_args['data'], regenerate=False)
@@ -359,16 +361,19 @@ def csv_writer(csv_file, result_dict):
             row.update(value)
             writer.writerow(row)
 
-def main_evaluator(pred_style=None):
+def main_evaluator(pred_style=None, model_name=DEFAULT_MODEL_NAME):
     
     with open('./real_data_args.yaml') as file:
         real_data_args = yaml.load(file, yaml.loader.SafeLoader)
+    real_data_args["model_name"] = model_name
 
     if pred_style is None:
         pred_style = real_data_args['pred_style']
 
+    model_string = f'../../models/{model_name}.pth'
+
     if not os.path.exists(f'../../data/real_data_evals/{model_name}/{pred_style}'):
-        os.mkdir(f'../../data/real_data_evals/{model_name}/{pred_style}')
+        os.makedirs(f'../../data/real_data_evals/{model_name}/{pred_style}', exist_ok=True)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
@@ -417,11 +422,13 @@ def main_evaluator(pred_style=None):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("-s", "--slurm", type=bool, default=False, help="flag to run training on slurm")
+    parser.add_argument("-m", "--model_name", type=str, default=DEFAULT_MODEL_NAME, help="Model name to evaluate")
     args = parser.parse_args()
 
+    model_name = args.model_name
     directory = f'../../data/real_data_evals/{model_name}'
     if not os.path.exists(directory):
-        os.mkdir(directory)
+        os.makedirs(directory, exist_ok=True)
     print(args.slurm)
     if args.slurm:
         print("Running on slurm")
@@ -431,13 +438,13 @@ if __name__ == '__main__':
         log_folder = '../logs/'
         maximum_runtime = set_queue('mlhiwi', log_folder)
         submit_func = ex.submit
-        job = submit_func(main_evaluator)
+        job = submit_func(main_evaluator, model_name=model_name)
 
         print(job)
     else:
         print("Running on local machine")
-        for pred_style in ['auto_regressive', 'ensemble']:
-            main_evaluator(pred_style)
+        for pred_style in ['multipoint']: # Defaulting to multipoint for SC-Mamba
+            main_evaluator(pred_style, model_name)
 
 
     

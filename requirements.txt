@@ -1,0 +1,17 @@
+# Mamba & Causal SSM compatibility environment (PyTorch 2.4.0, CUDA 12.1)
+# Note: causal_conv1d and mamba_ssm wheels should be installed via direct link 
+# on systems like Colab to avoid long ninja build times.
+
+torch==2.4.0
+torchvision
+torchaudio
+transformers==4.39.3
+packaging
+triton
+gluonts
+utilsforecast
+yfinance
+tqdm
+pandas
+numpy
+pyyaml
