@@ -25,66 +25,11 @@ def position_encoding(periods: int, freqs: int):
     ])
 
 def generate_model_save_name(config):
-    name = 'latest_'
-    if config['model_type'] == 'ssm' and config['ssm_config']['bidirectional']:
-        name += 'bi_'
-    name += f'{config["version"][:2]}_'
-    if config['model_type'] == 'ssm':
-        model_dict = config['ssm_config']
-    elif config['model_type'] == 'transformer':
-        model_dict = config['transformer_config']
-    else:
-        raise ValueError('Model type not supported')
-    name += f'{model_dict["num_encoder_layers"]}l_'
-    name += f'{model_dict["token_embed_len"]}e_'
-    name += 'res_' if model_dict["residual"] else 'nores_'
-    
-    name += f'{config["min_seq_len"]}-{config["max_seq_len"]}cl_'
-    
-    if config['model_type'] == 'ssm':
-        if model_dict['mamba2']:
-            name += 'm2_'
-        name += f'gr{model_dict["linear_seq"]}_' if model_dict["global_residual"] else ""
-        name += f'norm_' if model_dict["norm"] else ""
-        if model_dict['enc_conv'] or model_dict['init_dil_conv']:
-            name += f'dconv_'
-            name += f'i{model_dict["init_conv_kernel"]}' if model_dict['init_dil_conv'] else ''
-            name += f'e{model_dict["enc_conv_kernel"]}' if model_dict['enc_conv'] else ''
-            name += '_'
-        
-    name += f'lr{config["learning_rate"]}_'
-    name += f"mp{config['sample_multi_pred']}_" if config["multipoint"] else ""
-    name += f"{config['loss']}_" if config['loss'] == 'mae' else ""
-    if config["lr_scheduler"].startswith("cosine"):
-        name += "initlr" + str(config["initial_lr"]) + "_"
-        name += f't{config["t_max"]}' if config["t_max"] != -1 else f't{config["epochs"]}'
-        name += f'r' if config["lr_scheduler"] == "cosine_warm_restarts" else ''
-
-    if config['no_pos_enc']:
-        name += f'_no-pos'
-    elif config['sin_pos_enc']:
-        name += f'_sin-pos' if config['sin_pos_const'] == 10000 else f'_sin-pos{config["sin_pos_const"]}'
-
-    if config["prior_config"]['curriculum_learning']:
-        name += f'_cu{config["prior_config"]["prior_mix_frac"]}'
-    else:
-        name += f'_pm{config["prior_config"]["prior_mix_frac"]}'
-
-    if not config["prior_config"]["gp_prior_config"]['use_original_gp']:
-        if config["prior_config"]["gp_prior_config"]["gaussians_periodic"]:
-            name += "_nPer"
-    
-    name += f'_pl{config["pred_len_min"]}-{config["pred_len"]}' if config["pred_len_sample"] else f'_pl{config["pred_len"]}'
-    
-    name += '_subday' if config['sub_day'] else ''
-    
-    name += f'_subfreq{config["prior_config"]["gp_prior_config"]["subfreq_ratio"]}' if config["prior_config"]["gp_prior_config"]["subfreq_ratio"] != 0.0 else ''
-    name += f'_perfreq{config["prior_config"]["gp_prior_config"]["periods_per_freq"]}' if config["prior_config"]["gp_prior_config"]["periods_per_freq"] != 0.0 else ''
-        
-    name += f'_d{config["prior_config"]["damping_noise_ratio"]}' if config["prior_config"]["damp_and_spike"] else ''
-    name += f'_s{config["prior_config"]["spike_noise_ratio"]}' if config["prior_config"]["damp_and_spike"] else ''
-    
-    return name
+    """
+    Generate model save name specifically for SC-Mamba Forecaster.
+    We return a static structural name based on the benchmark standard.
+    """
+    return "sc_mamba_main_v1"
 
 
 def avoid_constant_inputs(inputs, outputs):
