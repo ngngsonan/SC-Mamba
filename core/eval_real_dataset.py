@@ -533,13 +533,25 @@ def main_evaluator(pred_style=None, model_name=DEFAULT_MODEL_NAME, model_prefix=
     print(f"  🔧 d_state = {ssm_config.get('d_state', 'N/A')}")
     print(f"  🔧 num_encoder_layers = {ssm_config.get('num_encoder_layers', 'N/A')}")
 
+    # N_assets for model construction: must match training config, NOT dataset series count.
+    # SC-Mamba trains channel-independent (num_assets=1 by default).
+    # The SpectralVariationalLayer reshapes Z as [B, N_assets, P_L, D], so
+    # using the dataset's actual series count (e.g. 111 for nn5_daily) when the
+    # model was trained with N_assets=1 would produce B=0 → crash.
+    if config_yaml_path and os.path.exists(config_yaml_path):
+        with open(config_yaml_path) as f:
+            _tc = yaml.load(f, yaml.loader.SafeLoader)
+        n_assets = _tc.get('num_assets', 1)
+    else:
+        n_assets = checkpoint_data.get('num_assets', 1)
+    print(f"  🔧 N_assets (model) = {n_assets}")
+
     context_lens = [512]
-    
+
     for dataset_name in REAL_DATASETS.keys():
-        
-        n_assets = REAL_DATASET_ASSETS.get(dataset_name, 1)
+
         model = SCMamba_Forecaster(
-            N_assets=n_assets, 
+            N_assets=n_assets,
             ssm_config=ssm_config
         ).to(device)
         model.load_state_dict(new_state_dict, strict=False)
