@@ -464,66 +464,40 @@ def csv_writer(csv_file, result_dict):
             row.update(value)
             writer.writerow(row)
 
-def main_evaluator(pred_style=None, model_name=DEFAULT_MODEL_NAME, model_prefix='models', checkpoint_path=None, config_yaml_path=None):
+def main_evaluator(pred_style=None, checkpoint_path=None, config_yaml_path=None):
     
     base_dir = os.path.dirname(os.path.abspath(__file__))
     config_path = os.path.join(base_dir, 'real_data_args.yaml')
     with open(config_path) as file:
         real_data_args = yaml.load(file, yaml.loader.SafeLoader)
-    real_data_args["model_name"] = model_name
+    real_data_args["model_name"] = os.path.basename(checkpoint_path).replace('.pth', '')
 
     if pred_style is None:
         pred_style = real_data_args['pred_style']
 
-    # --- Robust Checkpoint Resolution ---
+    # --- Checkpoint Validation ---
     print(f"\n{'='*60}")
-    print(f"  CHECKPOINT RESOLUTION")
+    print(f"  CHECKPOINT")
     print(f"{'='*60}")
-    print(f"  model_name      : {model_name}")
-    print(f"  model_prefix    : {model_prefix}")
-    print(f"  checkpoint_path : {checkpoint_path}")
-    print(f"  prefix exists?  : {os.path.isdir(model_prefix) if model_prefix else 'N/A'}")
+    print(f"  path   : {checkpoint_path}")
+    print(f"  exists : {os.path.exists(checkpoint_path)}")
 
-    if checkpoint_path and os.path.exists(checkpoint_path):
-        model_string = checkpoint_path
-        print(f"  🎯 Using explicit checkpoint: {model_string}")
-    else:
-        if checkpoint_path:
-            print(f"  ⚠️  Explicit checkpoint not found: {checkpoint_path}")
+    if not checkpoint_path or not os.path.exists(checkpoint_path):
+        print(f"\n[ERROR] Checkpoint not found: {checkpoint_path}", file=sys.stderr)
+        sys.exit(1)
 
-        # Fallback search chain: _best.pth -> .pth -> _Final.pth
-        candidates = [
-            os.path.join(model_prefix, f"{model_name}_best.pth"),
-            os.path.join(model_prefix, f"{model_name}.pth"),
-            os.path.join(model_prefix, f"{model_name}_Final.pth"),
-        ]
-        model_string = None
-        print(f"\n  Searching candidates:")
-        for cand in candidates:
-            exists = os.path.exists(cand)
-            status = '✅' if exists else '❌'
-            print(f"    {status} {cand}")
-            if exists and model_string is None:
-                model_string = cand
-
-        if model_string is None:
-            # List actual files in prefix for debugging
-            print(f"\n  📂 Actual files in '{model_prefix}':")
-            if os.path.isdir(model_prefix):
-                for fn in sorted(os.listdir(model_prefix)):
-                    if fn.endswith('.pth'):
-                        print(f"       {fn}")
-            else:
-                print(f"       ❌ Directory does not exist!")
-            print(f"\n[ERROR] No checkpoint found. Fix model_name or model_prefix.", file=sys.stderr)
-            sys.exit(1)
-
-        print(f"\n  ✅ Resolved: {model_string}")
+    model_string = checkpoint_path
+    # Derive model name from filename for result directory naming
+    model_name = os.path.basename(checkpoint_path).replace('.pth', '')
+    # Strip _best / _Final suffixes for cleaner directory names
+    for suffix in ('_best', '_Final'):
+        if model_name.endswith(suffix):
+            model_name = model_name[:-len(suffix)]
+            break
+    print(f"  model  : {model_name}")
     print(f"{'='*60}\n")
-    
-    # Use model_name for result directory, but ensure it handles path-like model_names from checkpoint_path
-    safe_model_name = os.path.basename(model_name) if checkpoint_path else model_name
-    eval_dir = os.path.join(base_dir, f'../data/real_data_evals/{safe_model_name}/{pred_style}')
+
+    eval_dir = os.path.join(base_dir, f'../data/real_data_evals/{model_name}/{pred_style}')
     if not os.path.exists(eval_dir):
         os.makedirs(eval_dir, exist_ok=True)
 
@@ -590,45 +564,31 @@ def main_evaluator(pred_style=None, model_name=DEFAULT_MODEL_NAME, model_prefix=
                     
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-s", "--slurm", type=bool, default=False, help="flag to run training on slurm")
-    parser.add_argument("-m", "--model_name", type=str, default=DEFAULT_MODEL_NAME, help="Model name to evaluate")
-    parser.add_argument("-p", "--model_prefix", type=str, default='models', help="Directory containing models")
-    parser.add_argument("-c", "--checkpoint_path", type=str, default=None, help="Explicit path to a .pth file (overrides -m and -p)")
-    parser.add_argument("-cfg", "--config", type=str, default=None, help="Path to training config YAML (for ssm_config)")
+    parser = argparse.ArgumentParser(
+        description='Evaluate SC-Mamba checkpoint on all 17 benchmark datasets.'
+    )
+    parser.add_argument("-c", "--checkpoint", type=str, required=True,
+                        help="Path to checkpoint .pth file")
+    parser.add_argument("-cfg", "--config", type=str, default=None,
+                        help="Path to training config YAML (for ssm_config)")
+    parser.add_argument("-s", "--slurm", type=bool, default=False,
+                        help="Run on SLURM cluster")
     args = parser.parse_args()
+
+    checkpoint_path = args.checkpoint
     config_yaml_path = args.config
 
-    model_name = args.model_name
-    model_prefix = args.model_prefix
-    checkpoint_path = args.checkpoint_path
-    
-    script_basedir = os.path.dirname(os.path.abspath(__file__))
-    
-    # Determine result folder name
-    log_name = os.path.basename(checkpoint_path).replace('.pth', '') if checkpoint_path else model_name
-    directory = os.path.join(script_basedir, f'../data/real_data_evals/{log_name}')
-    if not os.path.exists(directory):
-        os.makedirs(directory, exist_ok=True)
-    print(args.slurm)
     if args.slurm:
         if not HAS_SUBMITIT:
-            print("[ERROR] --slurm requires 'submitit' package. Install with: pip install submitit", file=sys.stderr)
+            print("[ERROR] --slurm requires 'submitit'. pip install submitit", file=sys.stderr)
             sys.exit(1)
-        print("Running on slurm")
-        global ex
-        global q
-        maximum_runtime = 0
+        script_basedir = os.path.dirname(os.path.abspath(__file__))
         log_folder = os.path.join(script_basedir, '../logs/')
         maximum_runtime = set_queue('mlhiwi', log_folder)
         submit_func = ex.submit
-        job = submit_func(main_evaluator, model_name=model_name, model_prefix=model_prefix, checkpoint_path=checkpoint_path, config_yaml_path=config_yaml_path)
-
+        job = submit_func(main_evaluator, checkpoint_path=checkpoint_path, config_yaml_path=config_yaml_path)
         print(job)
     else:
         print("Running on local machine")
-        for pred_style in ['multipoint']: # Defaulting to multipoint for SC-Mamba
-            main_evaluator(pred_style, model_name, model_prefix, checkpoint_path, config_yaml_path)
-
-
-    
+        for pred_style in ['multipoint']:
+            main_evaluator(pred_style, checkpoint_path, config_yaml_path)
