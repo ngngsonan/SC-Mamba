@@ -19,3 +19,5 @@ submitit
 wandb
 torchmetrics
 gpytorch
+scipy          # for CRPS closed-form Gaussian evaluation (crps_gaussian in eval_real_dataset.py)
+scikit-learn   # StandardScaler used in data_loader.py

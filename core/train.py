@@ -196,11 +196,23 @@ def train_model(config):
             # Calculate Loss Components
             nll_loss_val = nll_loss(output['mu'], output['sigma2'], scaled_target.float())
             kl_divergence = output['kl_loss']
-            beta = config.get('beta_kl', 0.1) # KL weighting coefficient
+
+            # beta_kl annealing: ramp 0 → beta_kl_target over the first half of training.
+            # Rationale: starting with β=0 lets the model first learn a good NLL landscape
+            # before the KL term constrains the spectral distribution. This prevents
+            # KL Collapse (model trivially maps μ_F → 0, σ_F → 1 to zero KL at the cost
+            # of learning no cross-asset structure). See β-VAE / NVAE annealing literature.
+            beta_target = config.get('beta_kl', 0.1)
+            beta_anneal_epochs = config.get('beta_anneal_epochs', config['num_epochs'] // 2)
+            global_step = epoch * config['training_rounds'] + batch_idx
+            total_warmup_steps = beta_anneal_epochs * config['training_rounds']
+            beta = min(beta_target, beta_target * global_step / max(total_warmup_steps, 1))
             
             loss = nll_loss_val + beta * kl_divergence
 
             loss.backward()
+            # Clip gradients to prevent NLL instability when σ² approaches floor (1e-6 → gradient ≈ 1e6)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 
             optimizer.step()
 
@@ -275,7 +287,8 @@ def train_model(config):
                 val_mse.update(inv_scaled_output, target)
                 val_smape.update(inv_scaled_output, target)
 
-                if val_batch_idx == config['validation_rounds'] - 1:
+                val_batch_idx += 1  # FIX: was never incremented, causing only 1 validation batch
+                if val_batch_idx == config['validation_rounds']:
                     break
 
         # Compute and log validation metrics
@@ -315,23 +328,42 @@ def train_model(config):
             print(f'  🏆 Best checkpoint saved (epoch {epoch+1}, val_loss={best_val_loss:.4f})')
 
         if epoch % config['real_test_interval'] == config['real_test_interval'] - 1:
-            res_dict = {'real_dataset_metrics': {'mase':{}, 'mae':{}, 'rmse':{}, 'smape':{}}, 'epoch': epoch}
+            res_dict = {
+                'real_dataset_metrics': {
+                    'mase': {}, 'mae': {}, 'rmse': {}, 'smape': {},
+                    'nll': {}, 'crps': {},   # Probabilistic metrics unique to SC-Mamba
+                },
+                'epoch': epoch
+            }
             for real_dataset in config['real_test_datasets']:
                 print(f'Evaluating on real dataset: {real_dataset}')
-                real_mase, real_mae, real_rmse, real_smape = validate_on_real_dataset(real_dataset, model, device, config['scaler'], subday=config["sub_day"])
-                print(f"MASE: {real_mase}, MAE: {real_mae}, RMSE: {real_rmse}, SMAPE: {real_smape}")
+                real_mase, real_mae, real_rmse, real_smape, real_nll, real_crps = validate_on_real_dataset(
+                    real_dataset, model, device, config['scaler'], subday=config["sub_day"]
+                )
+                print(
+                    f"MASE: {real_mase:.4f}, MAE: {real_mae:.4f}, "
+                    f"RMSE: {real_rmse:.4f}, SMAPE: {real_smape:.4f}, "
+                    f"NLL: {real_nll:.4f}, CRPS: {real_crps:.4f}"
+                )
                 res_dict['real_dataset_metrics']['mase'][real_dataset] = real_mase
                 res_dict['real_dataset_metrics']['mae'][real_dataset] = real_mae
                 res_dict['real_dataset_metrics']['rmse'][real_dataset] = real_rmse
                 res_dict['real_dataset_metrics']['smape'][real_dataset] = real_smape
+                res_dict['real_dataset_metrics']['nll'][real_dataset] = real_nll
+                res_dict['real_dataset_metrics']['crps'][real_dataset] = real_crps
                 if config["wandb"]:
                     wandb.log(res_dict)
         
-        if config['lr_scheduler'].startswith("cosine"):
-            if (scheduler.get_last_lr()[0] == config['learning_rate']) & (config['lr_scheduler'] == "cosine"):
+        # LR Scheduler step — separated by scheduler type to avoid calling
+        # CosineAnnealingWarmRestarts without the required epoch arg.
+        if config['lr_scheduler'] == "cosine":
+            if scheduler.get_last_lr()[0] <= config['learning_rate'] + 1e-10:
                 print("Learning rate has reached the minimum value. No more steps.")
             else:
                 scheduler.step()
+        elif config['lr_scheduler'] == "cosine_warm_restarts":
+            # CosineAnnealingWarmRestarts expects epoch as the fractional epoch index
+            scheduler.step(epoch + 1)
             
         if epoch % 5 == 4:
             ckpt = {
@@ -346,10 +378,11 @@ def train_model(config):
         wandb.finish()
 
     # Save the final model
+    has_scheduler = config['lr_scheduler'] in ('cosine', 'cosine_warm_restarts')
     ckpt = {
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
-        'scheduler_state_dict': scheduler.state_dict() if config['lr_scheduler'] == "cosine" else None,
+        'scheduler_state_dict': scheduler.state_dict() if has_scheduler else None,
         'epoch': epoch,
     }
     torch.save(ckpt, f"{config['model_prefix']}/{config['model_save_name']}_Final.pth")

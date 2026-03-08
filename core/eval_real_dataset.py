@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -14,6 +15,7 @@ import csv
 from core.models import SCMamba_Forecaster
 from tqdm import tqdm
 import time
+from scipy.stats import norm as scipy_norm
 
 REAL_DATASETS = {
     "nn5_daily_without_missing": 56,
@@ -125,11 +127,46 @@ def scale_data(output, scaler):
     
 def nll_eval(mu, sigma2, target):
     """
-    Negative Log-Likelihood evaluation for predictions
+    Per-element Gaussian NLL used as a probabilistic quality metric at evaluation.
+    Not used for gradient computation (eval only).
     """
     sigma2 = torch.clamp(sigma2, min=1e-6)
-    loss = 0.5 * torch.log(2 * np.pi * sigma2) + 0.5 * ((target - mu) ** 2) / sigma2
+    loss = 0.5 * torch.log(torch.tensor(2 * np.pi) * sigma2) + 0.5 * ((target - mu) ** 2) / sigma2
     return loss
+
+
+def crps_gaussian(mu: np.ndarray, sigma: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """
+    Closed-form CRPS for a Gaussian predictive distribution.
+
+    CRPS(N(mu, sigma^2), y) = sigma * [
+        (z * (2*Phi(z) - 1)) + 2*phi(z) - 1/sqrt(pi)
+    ]
+    where z = (y - mu) / sigma, Phi = Gaussian CDF, phi = Gaussian PDF.
+
+    References
+    ----------
+    Gneiting & Raftery (2007), "Strictly Proper Scoring Rules, Prediction, and Estimation".
+    Jordan et al. (2019), properscoring library closed-form derivation.
+
+    Parameters
+    ----------
+    mu     : point forecast mean,  shape [...]
+    sigma  : predictive std-dev (> 0), shape [...]
+    y      : ground-truth observation, shape [...]
+
+    Returns
+    -------
+    crps   : per-element CRPS scores, shape [...] (lower is better)
+    """
+    sigma = np.clip(sigma, a_min=1e-6, a_max=None)
+    z = (y - mu) / sigma
+    crps = sigma * (
+        z * (2.0 * scipy_norm.cdf(z) - 1.0)
+        + 2.0 * scipy_norm.pdf(z)
+        - 1.0 / np.sqrt(np.pi)
+    )
+    return crps
 
 
 def auto_regressive_predict(model, batch_x, batch_y, batch_x_mark, batch_y_mark, eval_pred_len, real_data_args, scaler, device):
@@ -331,9 +368,19 @@ def evaluate_real_dataset(dataset: str, model, scaler, context_len, eval_pred_le
     smape_loss = smape(pred_df, ['pred'], 'id', 'target')
     mean_nll = pred_df['nll'].mean()
 
+    # CRPS (Continuous Ranked Probability Score) — closed-form Gaussian CRPS.
+    # This is the primary probabilistic metric distinguishing SC-Mamba from
+    # deterministic baselines (Mamba4Cast, etc.) which cannot report CRPS.
+    # Lower CRPS = better calibrated distributional forecast.
+    mu_np = pred_df['pred'].values
+    sigma_np = np.sqrt(np.clip(pred_df['variance'].values, 1e-6, None))
+    y_np = pred_df['target'].values
+    crps_vals = crps_gaussian(mu_np, sigma_np, y_np)
+    mean_crps = float(crps_vals.mean())
+
     out_dict = {'mase': mase_loss['pred'].mean(), 'mae': mae_loss['pred'].mean(), 
                 'rmse': rmse_loss['pred'].mean(), 'smape': smape_loss['pred'].mean(),
-                'nll': mean_nll}
+                'nll': mean_nll, 'crps': mean_crps}
 
     return out_dict, train_df, pred_df
 

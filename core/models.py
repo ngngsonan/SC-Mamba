@@ -142,10 +142,17 @@ class SpectralVariationalLayer(nn.Module):
             nn.Linear(d_model, complex_dim)
         )
         
-        # The learnable causal cut-off threshold (tau) initialized closely to 0.1
+        # Learnable causal cut-off threshold τ — initialized at 0.1 so the filter
+        # starts with moderate sparsity and learns the right threshold from data.
         self.tau = nn.Parameter(torch.tensor(0.1))
-        # Steepness parameter for pseudo-step function thresholding
-        self.alpha = 50.0 
+
+        # α controls the steepness of the sigmoid approximating a hard step-function.
+        # DESIGN CHOICE: Made learnable (nn.Parameter) rather than hard-coded at 50.
+        # Rationale: hard α=50 causes sigmoid saturation early in training → gradient≈0
+        # through the mask → τ cannot update. Starting at α=1.0 keeps the mask soft
+        # (smooth gradient landscape). The model naturally sharpens α as τ converges.
+        # Clamped in forward() to [0.5, 50] to prevent degenerate solutions.
+        self.log_alpha = nn.Parameter(torch.tensor(0.0))  # exp(0.0) = 1.0 initial alpha
         
     def forward(self, Z_real, N_assets):
         """
@@ -183,10 +190,14 @@ class SpectralVariationalLayer(nn.Module):
         # 2. Causal Spectral Filtering (Learnable Hard-Thresholding)
         # Calculate amplitude |F_t(k)|
         amplitude = torch.abs(F_complex)
-        
-        # Filter mask M_t(k) using steep sigmoid to approximate step function
-        # This trims spurious (non-causal) cross-asset frequency correlations
-        mask = torch.sigmoid(self.alpha * (amplitude - self.tau))
+
+        # α is computed from log_alpha to keep it strictly positive; clamped to [0.5, 50]
+        # so the sigmoid never fully saturates (gradient vanishing) during training.
+        alpha = torch.clamp(torch.exp(self.log_alpha), min=0.5, max=50.0)
+
+        # Filter mask M_t(k) using sigmoid to approximate step function.
+        # Starts soft (α≈1) for stable gradient flow to τ; sharpens as model converges.
+        mask = torch.sigmoid(alpha * (amplitude - self.tau))
         
         # Apply Causal Mask
         F_hat = mask * F_complex
