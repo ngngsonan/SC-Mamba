@@ -8,6 +8,36 @@ import pandas as pd
 from tqdm import tqdm
 import yfinance as yf
 import datetime
+import urllib.request
+import traceback
+
+
+def ensure_competition_data():
+    """
+    Pre-download M3C.xls and M1C.xls to ~/.gluonts/datasets/ if they don't exist.
+    GluonTS refuses to auto-download these from forecasters.org and raises RuntimeError.
+    We fetch from reliable GitHub mirrors instead.
+    """
+    gluonts_dir = os.path.expanduser('~/.gluonts/datasets')
+    os.makedirs(gluonts_dir, exist_ok=True)
+
+    downloads = {
+        'M3C.xls': 'https://raw.githubusercontent.com/jordicolomer/m3-competition/master/M3C.xls',
+        'M1C.xls': 'https://raw.githubusercontent.com/Mcompetitions/M1-methods/master/M1C.xls',
+    }
+    for filename, url in downloads.items():
+        dest = os.path.join(gluonts_dir, filename)
+        if not os.path.exists(dest):
+            print(f'  📥 Downloading {filename} from GitHub mirror...')
+            try:
+                urllib.request.urlretrieve(url, dest)
+                print(f'  ✅ Saved to {dest} ({os.path.getsize(dest) / 1024:.0f} KB)')
+            except Exception as e:
+                print(f'  ⚠️  Failed to download {filename}: {e}')
+                print(f'      Manual fix: download from {url}')
+                print(f'      and place at: {dest}')
+        else:
+            print(f'  ✅ {filename} already exists at {dest}')
 
 MAX_LENGTH = 512
 
@@ -34,100 +64,105 @@ REAL_DATASETS = {
 }
 
 def create_real_val_datasets(pad: bool=False):
+    # Pre-download competition XLS files that GluonTS can't auto-fetch
+    ensure_competition_data()
+
+    script_path = os.path.abspath(__file__)
+    script_dir = os.path.dirname(script_path)
+    save_path = f"{script_dir}/../../data/real_val_datasets"
+    os.makedirs(save_path, exist_ok=True)
+    padded = 'pad' if pad else 'nopad'
+
+    failed_datasets = []
 
     for dataset, pred_len in REAL_DATASETS.items():
-        
-        script_path = os.path.abspath(__file__)
-        script_dir = os.path.dirname(script_path)
-
-        save_path = f"{script_dir}/../../data/real_val_datasets"
-        os.makedirs(save_path, exist_ok = True)
-        padded = 'pad' if pad else 'nopad'
 
         if os.path.exists(f"{save_path}/{dataset}_{padded}_{MAX_LENGTH}.pkl"):
             print(f"Dataset {dataset} already exists. Skipping...")
             continue
 
-        print(f"Processing {dataset}")
-        
-        test_dfs = [] # Standard format expected by the subsequent logic
-        dataframes = [] # Structure to hold the processed Dataframes
-        
-        if dataset == "nasdaq":
-            print("Fetching NASDAQ 100 via yfinance...")
-            # We fetch a predefined list of top NASDAQ components (for stability and reproducibility)
-            top_tickers = ['AAPL', 'MSFT', 'AMZN', 'GOOGL', 'META', 'TSLA', 'NVDA', 'AVGO', 'PEP', 'COST', 
-                           'CSCO', 'TMUS', 'ADBE', 'TXN', 'QCOM', 'HON', 'AMGN', 'INTC', 'SBUX', 'GILD'] # Limited to 20 for computational speed in parsing, can be expanded to 100
-            end_date = datetime.datetime.now()
-            start_date = end_date - datetime.timedelta(days=5*365) # 5 years historical data
-            
-            # Fetch explicitly as single threaded to avoid yfinance rate limits
-            for ticker in tqdm(top_tickers, desc="Downloading Tickers"):
-                try:
-                    df_ticker = yf.download(ticker, start=start_date, end=end_date, progress=False)
-                    if not df_ticker.empty:
-                        # We only need the Close price. Ensure it's a 1D Series indexed by Date
-                        target_series = df_ticker['Close']
-                        # Re-index to ensure continuous business days, forward fill gaps
-                        all_bds = pd.date_range(start=target_series.index.min(), end=target_series.index.max(), freq='B')
-                        target_series = target_series.reindex(all_bds).ffill().bfill()
-                        test_dfs.append(target_series)
-                except Exception as e:
-                    print(f"Failed to fetch {ticker}: {e}")
-            
-            # Instead of reading data.test, we explicitly mock sizes
-            sizes = [len(series) for series in test_dfs]
-        
-        else:
-            if dataset == "ercot":
-                data = get_dataset(dataset, regenerate=True)
-            else:
-                data = get_dataset(dataset, regenerate=True, prediction_length=pred_len)
-            
-            from concurrent.futures import ThreadPoolExecutor  
-            with ThreadPoolExecutor(max_workers=5) as executor:
-                test_dfs = list(executor.map(to_pandas, list(data.test)))
-                
-            sizes = []
-            for series in list(data.test):
-                sizes.append(series["target"].shape[0])
-            
-        max_series_len = min(max(sizes), MAX_LENGTH + pred_len) # changed this to account for pred len
-        
-        padded_series = []
-        for series in tqdm(test_dfs):
-            current_length = len(series)
+        print(f"\nProcessing {dataset}")
+        try:
+            test_dfs = []
+            dataframes = []
 
-            if current_length < max_series_len:
-                if pad:
-                    # Create an array of zeros with the necessary padding length
-                    padding = np.zeros(max_series_len - current_length)
-                    # Combine the current series values with padding
-                    padded_array = np.concatenate([padding, series.values])
-                    # Handle the index
-                    padded_index = [pd.NaT] * (max_series_len - current_length) + series.index.tolist()
-                    # Create a new Series
-                    new_series = pd.Series(padded_array, index=padded_index)
+            if dataset == "nasdaq":
+                print("Fetching NASDAQ 100 via yfinance...")
+                top_tickers = ['AAPL', 'MSFT', 'AMZN', 'GOOGL', 'META', 'TSLA', 'NVDA', 'AVGO', 'PEP', 'COST',
+                               'CSCO', 'TMUS', 'ADBE', 'TXN', 'QCOM', 'HON', 'AMGN', 'INTC', 'SBUX', 'GILD']
+                end_date = datetime.datetime.now()
+                start_date = end_date - datetime.timedelta(days=5*365)
+
+                for ticker in tqdm(top_tickers, desc="Downloading Tickers"):
+                    try:
+                        df_ticker = yf.download(ticker, start=start_date, end=end_date, progress=False)
+                        if not df_ticker.empty:
+                            target_series = df_ticker['Close']
+                            all_bds = pd.date_range(start=target_series.index.min(), end=target_series.index.max(), freq='B')
+                            target_series = target_series.reindex(all_bds).ffill().bfill()
+                            test_dfs.append(target_series)
+                    except Exception as e:
+                        print(f"Failed to fetch {ticker}: {e}")
+
+                sizes = [len(series) for series in test_dfs]
+
+            else:
+                if dataset == "ercot":
+                    data = get_dataset(dataset, regenerate=True)
                 else:
-                    new_series = series # Do not pad
-            else:
-                new_series = series.iloc[-max_series_len:]
-            padded_series.append(new_series)
+                    data = get_dataset(dataset, regenerate=True, prediction_length=pred_len)
 
+                from concurrent.futures import ThreadPoolExecutor
+                with ThreadPoolExecutor(max_workers=5) as executor:
+                    test_dfs = list(executor.map(to_pandas, list(data.test)))
 
-        for i, series in enumerate(padded_series):
-            df = series.reset_index()
-            df.rename(columns={'index': 'date', 0: "target"}, inplace=True)
-            df['Series'] = i  # Add the series identifier
-            dataframes.append(df)
-            
-    # Concatenate all the individual dataframes
-        stacked_df = pd.concat(dataframes, ignore_index=False)
-        stacked_df.set_index(['Series', stacked_df.index], inplace=True)
-        stacked_df.date = stacked_df.date.apply(lambda x: x.to_timestamp())
-        
-        with open(f"{save_path}/{dataset}_{padded}_{MAX_LENGTH}.pkl", "wb") as f:
-            pickle.dump(stacked_df, f)
+                sizes = []
+                for series in list(data.test):
+                    sizes.append(series["target"].shape[0])
+
+            max_series_len = min(max(sizes), MAX_LENGTH + pred_len)
+
+            padded_series = []
+            for series in tqdm(test_dfs):
+                current_length = len(series)
+
+                if current_length < max_series_len:
+                    if pad:
+                        padding = np.zeros(max_series_len - current_length)
+                        padded_array = np.concatenate([padding, series.values])
+                        padded_index = [pd.NaT] * (max_series_len - current_length) + series.index.tolist()
+                        new_series = pd.Series(padded_array, index=padded_index)
+                    else:
+                        new_series = series
+                else:
+                    new_series = series.iloc[-max_series_len:]
+                padded_series.append(new_series)
+
+            for i, series in enumerate(padded_series):
+                df = series.reset_index()
+                df.rename(columns={'index': 'date', 0: "target"}, inplace=True)
+                df['Series'] = i
+                dataframes.append(df)
+
+            stacked_df = pd.concat(dataframes, ignore_index=False)
+            stacked_df.set_index(['Series', stacked_df.index], inplace=True)
+            stacked_df.date = stacked_df.date.apply(lambda x: x.to_timestamp())
+
+            with open(f"{save_path}/{dataset}_{padded}_{MAX_LENGTH}.pkl", "wb") as f:
+                pickle.dump(stacked_df, f)
+            print(f"  ✅ {dataset} saved successfully.")
+
+        except Exception as e:
+            print(f"  ❌ FAILED to process {dataset}: {e}")
+            traceback.print_exc()
+            failed_datasets.append(dataset)
+            continue
+
+    if failed_datasets:
+        print(f"\n⚠️  {len(failed_datasets)} dataset(s) failed: {failed_datasets}")
+        print("   These may need manual intervention or network retry.")
+    else:
+        print(f"\n✅ All {len(REAL_DATASETS)} datasets processed successfully.")
 
 if __name__ == "__main__":
     create_real_val_datasets(pad=False)
