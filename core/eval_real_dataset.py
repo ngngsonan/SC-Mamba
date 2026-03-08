@@ -441,27 +441,50 @@ def main_evaluator(pred_style=None, model_name=DEFAULT_MODEL_NAME, model_prefix=
         pred_style = real_data_args['pred_style']
 
     # --- Robust Checkpoint Resolution ---
+    print(f"\n{'='*60}")
+    print(f"  CHECKPOINT RESOLUTION")
+    print(f"{'='*60}")
+    print(f"  model_name      : {model_name}")
+    print(f"  model_prefix    : {model_prefix}")
+    print(f"  checkpoint_path : {checkpoint_path}")
+    print(f"  prefix exists?  : {os.path.isdir(model_prefix) if model_prefix else 'N/A'}")
+
     if checkpoint_path and os.path.exists(checkpoint_path):
         model_string = checkpoint_path
-        print(f"🎯 Using explicit checkpoint: {model_string}")
+        print(f"  🎯 Using explicit checkpoint: {model_string}")
     else:
+        if checkpoint_path:
+            print(f"  ⚠️  Explicit checkpoint not found: {checkpoint_path}")
+
         # Fallback search chain: _best.pth -> .pth -> _Final.pth
         candidates = [
-            f"{model_prefix}/{model_name}_best.pth",
-            f"{model_prefix}/{model_name}.pth",
-            f"{model_prefix}/{model_name}_Final.pth"
+            os.path.join(model_prefix, f"{model_name}_best.pth"),
+            os.path.join(model_prefix, f"{model_name}.pth"),
+            os.path.join(model_prefix, f"{model_name}_Final.pth"),
         ]
         model_string = None
+        print(f"\n  Searching candidates:")
         for cand in candidates:
-            if os.path.exists(cand):
+            exists = os.path.exists(cand)
+            status = '✅' if exists else '❌'
+            print(f"    {status} {cand}")
+            if exists and model_string is None:
                 model_string = cand
-                break
-        
+
         if model_string is None:
-            print(f"\n[ERROR] No checkpoint found for model '{model_name}' in prefix '{model_prefix}'", file=sys.stderr)
-            print(f"Checked candidates: {candidates}", file=sys.stderr)
+            # List actual files in prefix for debugging
+            print(f"\n  📂 Actual files in '{model_prefix}':")
+            if os.path.isdir(model_prefix):
+                for fn in sorted(os.listdir(model_prefix)):
+                    if fn.endswith('.pth'):
+                        print(f"       {fn}")
+            else:
+                print(f"       ❌ Directory does not exist!")
+            print(f"\n[ERROR] No checkpoint found. Fix model_name or model_prefix.", file=sys.stderr)
             sys.exit(1)
-        print(f"✅ Resolved checkpoint: {model_string}")
+
+        print(f"\n  ✅ Resolved: {model_string}")
+    print(f"{'='*60}\n")
     
     # Use model_name for result directory, but ensure it handles path-like model_names from checkpoint_path
     safe_model_name = os.path.basename(model_name) if checkpoint_path else model_name
