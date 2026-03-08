@@ -411,9 +411,14 @@ def evaluate_real_dataset(dataset: str, model, scaler, context_len, eval_pred_le
     crps_vals = crps_gaussian(mu_np, sigma_np, y_np)
     mean_crps = float(crps_vals.mean())
 
-    out_dict = {'mase': mase_loss['pred'].mean(), 'mae': mae_loss['pred'].mean(), 
-                'rmse': rmse_loss['pred'].mean(), 'smape': smape_loss['pred'].mean(),
-                'nll': mean_nll, 'crps': mean_crps}
+    out_dict = {
+        'mase': float(mase_loss['pred'].mean()),
+        'mae': float(mae_loss['pred'].mean()),
+        'rmse': float(rmse_loss['pred'].mean()),
+        'smape': float(smape_loss['pred'].mean()),
+        'nll': float(mean_nll),
+        'crps': float(mean_crps),
+    }
 
     return out_dict, train_df, pred_df
 
