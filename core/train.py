@@ -190,7 +190,9 @@ def train_model(config):
         running_kl_loss = 0.0
         train_epoch_loss = 0.0
         batch_idx = 0
+        print("Waiting for first batch from dataloader...", flush=True)
         for batch_id, batch in enumerate(train_dataloader):
+            print(f"[{time.time() - epoch_start_time:.2f}s] Fetched batch {batch_id}", flush=True)
             data, target = {k: v.to(device) for k, v in batch.items() if k != 'target_values'}, batch['target_values'].to(device)           
             avoid_constant_inputs(data['history'], target)
             
@@ -215,9 +217,13 @@ def train_model(config):
                     data['target_dates'] = data['target_dates'][:, start_pred:end_pred].contiguous()
                     data['complete_target'] = data['complete_target'][:, start_pred:end_pred].contiguous()
                     data['task'] = data['task'][:, start_pred:end_pred].contiguous()
+                print(f"[{time.time() - epoch_start_time:.2f}s] Running forward pass (Mamba2 compilation may take up to 10 mins on first batch)...", flush=True)
                 output = model(data, prediction_length=pred_len)
+                print(f"[{time.time() - epoch_start_time:.2f}s] Forward pass complete", flush=True)
             else:
+                print(f"[{time.time() - epoch_start_time:.2f}s] Running forward pass...", flush=True)
                 output = model(data, prediction_length=pred_len)
+                print(f"[{time.time() - epoch_start_time:.2f}s] Forward pass complete", flush=True)
 
             if config['scaler'] == 'min_max':
                 max_scale = output['scale'][0].squeeze(-1)
