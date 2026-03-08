@@ -103,7 +103,7 @@ class DilatedConv1dBlock(nn.Module):
 class BiMambaEncoderBlock(nn.Module):
     def __init__(self, embed_dim, norm=True, norm_type='layernorm', residual=False, name='SSMEncoderBlock', mamba2=False,
                  enc_conv=False, enc_conv_kernel=5, enc_conv_dilation=0, d_state=128, block_expansion=2,
-                 chunk_size=64, **kwargs):
+                 chunk_size=256, **kwargs):
         super().__init__()
         self.enc_conv = enc_conv
         self.name = name
@@ -184,7 +184,7 @@ class BiMambaEncoderBlock(nn.Module):
 class SSMEncoderBlock(nn.Module):
     def __init__(self, embed_dim, norm=True, norm_type='layernorm', residual=False, name='SSMEncoderBlock', mamba2=False,
                  enc_conv=False, enc_conv_kernel=5, enc_conv_dilation=0, d_state=128, block_expansion=2,
-                 chunk_size=64, **kwargs):
+                 chunk_size=256, **kwargs):
         super().__init__()
         
         self.enc_conv = enc_conv

@@ -39,7 +39,7 @@ ssm_config:
   residual: false
   token_embed_len: 1024
   block_expansion: 2
-  chunk_size: 64         # Mamba2 SSD kernel: seq_len % chunk_size == 0 (min supported: 64)
+  chunk_size: 256        # Must match Mamba2 default chunk_size=256; seq_len padded to this multiple in encode_temporal
 
 # Training schedule
 training_rounds: 2000    # ← 8× more than baseline (was 250)

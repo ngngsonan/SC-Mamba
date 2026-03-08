@@ -35,7 +35,7 @@ class SC_SSMModelBackbone(nn.Module):
             conv_d=4,
             d_state=128,
             block_expansion=2,
-            chunk_size=64,   # Mamba2 SSD kernel: seq_len % chunk_size must == 0
+            chunk_size=256,  # Must match Mamba2 internal chunk_size (default=256); seq_len is padded to this multiple
             **kwargs
         ):
         super().__init__()
