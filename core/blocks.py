@@ -102,7 +102,8 @@ class DilatedConv1dBlock(nn.Module):
 
 class BiMambaEncoderBlock(nn.Module):
     def __init__(self, embed_dim, norm=True, norm_type='layernorm', residual=False, name='SSMEncoderBlock', mamba2=False,
-                 enc_conv=False, enc_conv_kernel=5, enc_conv_dilation=0, d_state=128, block_expansion=2,**kwargs):
+                 enc_conv=False, enc_conv_kernel=5, enc_conv_dilation=0, d_state=128, block_expansion=2,
+                 chunk_size=64, **kwargs):
         super().__init__()
         self.enc_conv = enc_conv
         self.name = name
@@ -128,12 +129,14 @@ class BiMambaEncoderBlock(nn.Module):
             d_state=d_state,  # SSM state expansion factor
             d_conv=4,    # Local convolution width
             expand=block_expansion,    # Block expansion factor
+            chunk_size=chunk_size,     # Must satisfy seq_len % chunk_size == 0
             )
             self.mamba_layer_backward = Mamba2(
             d_model=embed_dim, # Model dimension d_model
             d_state=d_state,  # SSM state expansion factor
             d_conv=4,    # Local convolution width
             expand=block_expansion,    # Block expansion factor
+            chunk_size=chunk_size,     # Must satisfy seq_len % chunk_size == 0
         )
             
         if self.enc_conv:
@@ -180,7 +183,8 @@ class BiMambaEncoderBlock(nn.Module):
 
 class SSMEncoderBlock(nn.Module):
     def __init__(self, embed_dim, norm=True, norm_type='layernorm', residual=False, name='SSMEncoderBlock', mamba2=False,
-                 enc_conv=False, enc_conv_kernel=5, enc_conv_dilation=0, d_state=128, block_expansion=2, **kwargs):
+                 enc_conv=False, enc_conv_kernel=5, enc_conv_dilation=0, d_state=128, block_expansion=2,
+                 chunk_size=64, **kwargs):
         super().__init__()
         
         self.enc_conv = enc_conv
@@ -200,6 +204,7 @@ class SSMEncoderBlock(nn.Module):
                 d_state=d_state,  # SSM state expansion factor ## originally 32
                 d_conv=4,    # Local convolution width
                 expand=block_expansion,    # Block expansion factor
+                chunk_size=chunk_size,     # Must satisfy seq_len % chunk_size == 0
             )
             
         if self.enc_conv:

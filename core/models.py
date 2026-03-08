@@ -35,12 +35,14 @@ class SC_SSMModelBackbone(nn.Module):
             conv_d=4,
             d_state=128,
             block_expansion=2,
+            chunk_size=64,   # Mamba2 SSD kernel: seq_len % chunk_size must == 0
             **kwargs
         ):
         super().__init__()
         self.epsilon = epsilon
         self.scaler = CustomScaling(scaler)
         self.embed_size = embed_size
+        self.chunk_size = chunk_size  # stored for sequence padding in encode_temporal
         
         # Initial Expansion from 1D to D_model
         self.expand_target = nn.Linear(1, self.embed_size, bias=True) 
@@ -65,11 +67,13 @@ class SC_SSMModelBackbone(nn.Module):
         if bidirectional:
             self.mamba_encoder_layers = nn.ModuleList([BiMambaEncoderBlock(token_embed_len, norm, norm_type, residual,
                                                                            d_state=d_state, block_expansion=block_expansion,
-                                                                           mamba2=mamba2, conv_d=conv_d) for _ in range(self.num_encoder_layers)])
+                                                                           mamba2=mamba2, conv_d=conv_d,
+                                                                           chunk_size=chunk_size) for _ in range(self.num_encoder_layers)])
         else:
             self.mamba_encoder_layers = nn.ModuleList([SSMEncoderBlock(token_embed_len, norm, norm_type, residual,
                                                                        d_state=d_state, block_expansion=block_expansion,
-                                                                       mamba2=mamba2, conv_d=conv_d) for _ in range(self.num_encoder_layers)])
+                                                                       mamba2=mamba2, conv_d=conv_d,
+                                                                       chunk_size=chunk_size) for _ in range(self.num_encoder_layers)])
         
         # STRIPPED: self.final_output = nn.Linear(token_embed_len, 1)
 
@@ -104,9 +108,21 @@ class SC_SSMModelBackbone(nn.Module):
             x = self.in_proj_norm(x) 
             x = self.init_gelu(x)
             
+        # Pad sequence to nearest chunk_size multiple so Mamba2's SSD Triton kernel
+        # satisfies its strict seq_len % chunk_size == 0 constraint.
+        # Padding is zero-valued and trimmed immediately after the Mamba stack.
+        L = x.shape[1]
+        pad = (self.chunk_size - L % self.chunk_size) % self.chunk_size
+        if pad > 0:
+            x = F.pad(x, (0, 0, 0, pad))  # pad along seq_len dim only
+
         # Extract temporal dynamics via sequential Mamba blocks
         for encoder_layer in self.mamba_encoder_layers:
             x = encoder_layer(x)
+
+        # Restore original sequence length before prediction window slicing
+        if pad > 0:
+            x = x[:, :L, :]
             
         # We extract only the prediction window temporal embeddings
         if self.global_residual:
