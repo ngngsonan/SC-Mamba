@@ -51,6 +51,7 @@ real_test_interval: 5    # validate on real data every 5 epochs
 lr_scheduler: cosine_warm_restarts
 initial_lr: 0.00001
 learning_rate: 0.0000001
+t_max: 300               # T_0 for CosineAnnealingWarmRestarts (warmup cycle length)
 
 # Context/prediction lengths — matches Mamba4Cast paper
 context_len: 323
