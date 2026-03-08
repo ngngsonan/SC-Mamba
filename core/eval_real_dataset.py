@@ -6,7 +6,11 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import pandas as pd
 import yaml
 import argparse
-import submitit
+try:
+    import submitit
+    HAS_SUBMITIT = True
+except ImportError:
+    HAS_SUBMITIT = False
 from gluonts.dataset.repository.datasets import get_dataset
 from gluonts.time_feature.seasonality import get_seasonality
 from data.data_provider.data_factory import data_provider
@@ -555,6 +559,9 @@ if __name__ == '__main__':
         os.makedirs(directory, exist_ok=True)
     print(args.slurm)
     if args.slurm:
+        if not HAS_SUBMITIT:
+            print("[ERROR] --slurm requires 'submitit' package. Install with: pip install submitit", file=sys.stderr)
+            sys.exit(1)
         print("Running on slurm")
         global ex
         global q
