@@ -68,12 +68,30 @@ class Dataset_GluonTS(Dataset):
         self.__read_data__()
 
     def __read_data__(self):
-        script_path = os.path.abspath(__file__)
-        script_dir = os.path.dirname(script_path)
+        # Resolve project root: data_provider/ → data/ → SC-Mamba-Code/
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+        save_path = os.path.join(project_root, 'data', 'real_val_datasets')
+        os.makedirs(save_path, exist_ok=True)
 
-        save_path = f"{script_dir}/../../../data/real_val_datasets"
         file_path = os.path.join(save_path, self.data_path)
         print(f"reading data from {file_path}")
+
+        # Auto-generate pkl if it doesn't exist yet (downloads from GluonTS)
+        if not os.path.exists(file_path):
+            print(f"  ⚠️  File not found: {file_path}")
+            print(f"  → Auto-generating via store_real_datasets.py ...")
+            store_script = os.path.join(project_root, 'data', 'scripts', 'store_real_datasets.py')
+            if os.path.exists(store_script):
+                import subprocess
+                subprocess.run(['python', store_script], check=True)
+            else:
+                raise FileNotFoundError(
+                    f"Cannot auto-generate dataset pkl.\n"
+                    f"  Missing file: {file_path}\n"
+                    f"  Missing script: {store_script}\n"
+                    f"  Run 'python data/scripts/store_real_datasets.py' manually first."
+                )
+
         with open(file_path, 'rb') as file:
             df_raw = pickle.load(file)
 

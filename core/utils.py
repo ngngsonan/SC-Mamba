@@ -29,7 +29,7 @@ def generate_model_save_name(config):
     Generate model save name specifically for SC-Mamba Forecaster.
     We return a static structural name based on the benchmark standard.
     """
-    return "sc_mamba_main_v1"
+    return f"SCMamba_{config['version']}"
 
 
 def avoid_constant_inputs(inputs, outputs):
