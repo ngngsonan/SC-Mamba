@@ -3,6 +3,11 @@ Module to train the model
 """
 import sys
 import os
+
+# CRITICAL: Programmatic workaround for Triton 3.x compiler bug on Colab T4 (Turing) GPUs.
+# Prevents Triton from compiling TF32 paths that crash with `IndexError: map::at`.
+os.environ["TRITON_F32_DEFAULT"] = "ieee"
+
 from pathlib import Path
 
 # Get the directory of the current script
