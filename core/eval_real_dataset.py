@@ -401,23 +401,36 @@ def evaluate_real_dataset(dataset: str, model, scaler, context_len, eval_pred_le
     smape_loss = smape(pred_df, ['pred'], 'id', 'target')
     mean_nll = pred_df['nll'].mean()
 
+    # MASE: replace inf/-inf with NaN (caused by zero-variance training windows in
+    # sparse datasets like car_parts, covid_deaths). Use skipna to get a valid mean.
+    mase_vals = mase_loss['pred'].replace([float('inf'), float('-inf')], float('nan'))
+    n_inf = int(mase_loss['pred'].isin([float('inf'), float('-inf')]).sum())
+    if n_inf > 0:
+        print(f"  ⚠️  MASE: {n_inf}/{len(mase_vals)} series have ∞ (zero-var training window) → excluded from mean")
+    mase_mean = float(mase_vals.mean(skipna=True)) if mase_vals.notna().any() else float('nan')
+
     # CRPS (Continuous Ranked Probability Score) — closed-form Gaussian CRPS.
-    # This is the primary probabilistic metric distinguishing SC-Mamba from
-    # deterministic baselines (Mamba4Cast, etc.) which cannot report CRPS.
-    # Lower CRPS = better calibrated distributional forecast.
+    # Primary probabilistic metric distinguishing SC-Mamba from deterministic baselines.
     mu_np = pred_df['pred'].values
     sigma_np = np.sqrt(np.clip(pred_df['variance'].values, 1e-6, None))
     y_np = pred_df['target'].values
     crps_vals = crps_gaussian(mu_np, sigma_np, y_np)
     mean_crps = float(crps_vals.mean())
 
+    # Scaled CRPS: normalize by data std for cross-dataset comparison.
+    # Raw CRPS is in original unit scale (e.g. 4M for CIF which has large values).
+    data_std = float(train_df['target'].std()) if train_df['target'].std() > 0 else 1.0
+    mean_crps_scaled = mean_crps / data_std
+
     out_dict = {
-        'mase': float(mase_loss['pred'].mean()),
+        'mase': mase_mean,
+        'mase_has_inf': n_inf > 0,
         'mae': float(mae_loss['pred'].mean()),
         'rmse': float(rmse_loss['pred'].mean()),
         'smape': float(smape_loss['pred'].mean()),
         'nll': float(mean_nll),
-        'crps': float(mean_crps),
+        'crps': mean_crps,
+        'crps_scaled': mean_crps_scaled,
     }
 
     return out_dict, train_df, pred_df
