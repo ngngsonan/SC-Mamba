@@ -97,22 +97,50 @@ def train_model(config):
     best_val_loss = float('inf')
     # Load state dicts if we are resuming training — prefer best checkpoint over periodic save
     config['model_save_name'] = generate_model_save_name(config)
+
+    # ── Checkpoint diagnostics ────────────────────────────────────────
     best_ckpt_path = f"{config['model_prefix']}/{config['model_save_name']}_best.pth"
     periodic_ckpt_path = f"{config['model_prefix']}/{config['model_save_name']}.pth"
+    final_ckpt_path = f"{config['model_prefix']}/{config['model_save_name']}_Final.pth"
+
+    print(f"\n{'='*60}")
+    print(f"  CHECKPOINT CONFIGURATION")
+    print(f"{'='*60}")
+    print(f"  model_save_name   : {config['model_save_name']}")
+    print(f"  model_prefix      : {config['model_prefix']}")
+    print(f"  continue_training : {config['continue_training']}")
+    print(f"  best  checkpoint  : {best_ckpt_path}")
+    print(f"       exists?      : {os.path.exists(best_ckpt_path)}")
+    print(f"  periodic checkpoint: {periodic_ckpt_path}")
+    print(f"       exists?      : {os.path.exists(periodic_ckpt_path)}")
+    print(f"  final checkpoint  : {final_ckpt_path}")
+    print(f"       exists?      : {os.path.exists(final_ckpt_path)}")
+    print(f"{'='*60}\n")
+
     resume_path = best_ckpt_path if os.path.exists(best_ckpt_path) else periodic_ckpt_path
     if config['continue_training'] and os.path.exists(resume_path):
-        print(f'loading previous training states from: {resume_path}')
+        print(f'✅ Loading checkpoint: {resume_path}')
         ckpt = torch.load(resume_path, map_location=device)
         # load states
+        ckpt_keys = list(ckpt.keys())
+        print(f'   Checkpoint keys: {ckpt_keys}')
+        print(f'   Checkpoint epoch: {ckpt.get("epoch", "N/A")}')
+        print(f'   Checkpoint best_val_loss: {ckpt.get("best_val_loss", "N/A")}')
+
         model.load_state_dict(ckpt['model_state_dict'])
         optimizer.load_state_dict(ckpt['optimizer_state_dict'])
         if config['lr_scheduler'] == 'cosine' and ckpt.get('scheduler_state_dict') is not None:
             scheduler.load_state_dict(ckpt['scheduler_state_dict'])
+            print(f'   Scheduler state loaded (last_lr={scheduler.get_last_lr()[0]:.2e})')
         initial_epoch = ckpt['epoch'] + 1
         best_val_loss = ckpt.get('best_val_loss', float('inf'))
-        print(f'Resuming from epoch {initial_epoch}, best_val_loss={best_val_loss:.4f}')
+        print(f'   ▶ Resuming from epoch {initial_epoch}, best_val_loss={best_val_loss:.4f}')
     else:
-        print('no previous training states found, starting fresh')
+        if config['continue_training']:
+            print(f'⚠️  continue_training=True but no checkpoint found at:')
+            print(f'     {best_ckpt_path}')
+            print(f'     {periodic_ckpt_path}')
+        print('Starting fresh training (no checkpoint loaded)')
         model = model.to(device)
     
     
