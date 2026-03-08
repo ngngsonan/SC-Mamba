@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import sys
 import os
+import math
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from core.utils import PositionExpansion, CustomScaling
 from core.constants import *
@@ -108,13 +109,20 @@ class SC_SSMModelBackbone(nn.Module):
             x = self.in_proj_norm(x) 
             x = self.init_gelu(x)
             
-        # Pad sequence to nearest chunk_size multiple so Mamba2's SSD Triton kernel
-        # satisfies its strict seq_len % chunk_size == 0 constraint.
-        # Padding is zero-valued and trimmed immediately after the Mamba stack.
+        # Pad sequence so Mamba2's SSD Triton kernel receives seq_len % chunk_size == 0.
+        #
+        # CRITICAL: nchunks = seq_len / chunk_size must be >= 2.
+        # When nchunks=1, the _chunk_state_fwd_kernel autotuner hits an LLVM
+        # compiler bug (IndexError: map::at) for certain BLOCK_SIZE_M tile configs.
+        # Inputs can be as short as min_seq_len(30) + pred_len_min(10) = 40 tokens,
+        # which when padded to 1 × chunk_size = 256 gives nchunks=1 — triggering the crash.
+        # Guarantee: min padded length = 2 × chunk_size → nchunks ≥ 2.
         L = x.shape[1]
-        pad = (self.chunk_size - L % self.chunk_size) % self.chunk_size
+        min_padded = 2 * self.chunk_size                        # nchunks ≥ 2
+        target_len = max(min_padded, math.ceil(L / self.chunk_size) * self.chunk_size)
+        pad = target_len - L
         if pad > 0:
-            x = F.pad(x, (0, 0, 0, pad))  # pad along seq_len dim only
+            x = F.pad(x, (0, 0, 0, pad))  # zero-pad seq_len dim only
 
         # Extract temporal dynamics via sequential Mamba blocks
         for encoder_layer in self.mamba_encoder_layers:
