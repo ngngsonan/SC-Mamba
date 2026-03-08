@@ -296,8 +296,11 @@ def ensemble_predict(model, batch_x, batch_x_mark, batch_y_mark, pred_len, scale
 
 
 def evaluate_real_dataset(dataset: str, model, scaler, context_len, eval_pred_len, device, pred_style=None):
-
-    with open('./real_data_args.yaml') as file:
+    # Use absolute path for real_data_args.yaml (same dir as this script)
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    config_file = os.path.join(base_dir, 'real_data_args.yaml')
+    
+    with open(config_file) as file:
         real_data_args = yaml.load(file, yaml.loader.SafeLoader)
 
     if pred_style is None:
@@ -426,9 +429,10 @@ def csv_writer(csv_file, result_dict):
             row.update(value)
             writer.writerow(row)
 
-def main_evaluator(pred_style=None, model_name=DEFAULT_MODEL_NAME):
+def main_evaluator(pred_style=None, model_name=DEFAULT_MODEL_NAME, model_prefix='models', checkpoint_path=None):
     
-    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'real_data_args.yaml')
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(base_dir, 'real_data_args.yaml')
     with open(config_path) as file:
         real_data_args = yaml.load(file, yaml.loader.SafeLoader)
     real_data_args["model_name"] = model_name
@@ -436,20 +440,36 @@ def main_evaluator(pred_style=None, model_name=DEFAULT_MODEL_NAME):
     if pred_style is None:
         pred_style = real_data_args['pred_style']
 
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    model_string = os.path.join(base_dir, f'../models/{model_name}.pth')
+    # --- Robust Checkpoint Resolution ---
+    if checkpoint_path and os.path.exists(checkpoint_path):
+        model_string = checkpoint_path
+        print(f"🎯 Using explicit checkpoint: {model_string}")
+    else:
+        # Fallback search chain: _best.pth -> .pth -> _Final.pth
+        candidates = [
+            f"{model_prefix}/{model_name}_best.pth",
+            f"{model_prefix}/{model_name}.pth",
+            f"{model_prefix}/{model_name}_Final.pth"
+        ]
+        model_string = None
+        for cand in candidates:
+            if os.path.exists(cand):
+                model_string = cand
+                break
+        
+        if model_string is None:
+            print(f"\n[ERROR] No checkpoint found for model '{model_name}' in prefix '{model_prefix}'", file=sys.stderr)
+            print(f"Checked candidates: {candidates}", file=sys.stderr)
+            sys.exit(1)
+        print(f"✅ Resolved checkpoint: {model_string}")
     
-    eval_dir = os.path.join(base_dir, f'../data/real_data_evals/{model_name}/{pred_style}')
+    # Use model_name for result directory, but ensure it handles path-like model_names from checkpoint_path
+    safe_model_name = os.path.basename(model_name) if checkpoint_path else model_name
+    eval_dir = os.path.join(base_dir, f'../data/real_data_evals/{safe_model_name}/{pred_style}')
     if not os.path.exists(eval_dir):
         os.makedirs(eval_dir, exist_ok=True)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    
-    if not os.path.exists(model_string):
-        print(f"\n[ERROR] Pretrained weights not found: {model_string}", file=sys.stderr)
-        print("Please ensure you have trained the model or downloaded the pretrained checkpoint.", file=sys.stderr)
-        print(f"Expected location: {os.path.abspath(model_string)}\n", file=sys.stderr)
-        sys.exit(1)
         
     new_state_dict = adapt_state_dict_keys(torch.load(model_string, map_location=device, weights_only=True)['model_state_dict'])    
     context_lens = [512]
@@ -495,11 +515,19 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("-s", "--slurm", type=bool, default=False, help="flag to run training on slurm")
     parser.add_argument("-m", "--model_name", type=str, default=DEFAULT_MODEL_NAME, help="Model name to evaluate")
+    parser.add_argument("-p", "--model_prefix", type=str, default='models', help="Directory containing models")
+    parser.add_argument("-c", "--checkpoint_path", type=str, default=None, help="Explicit path to a .pth file (overrides -m and -p)")
     args = parser.parse_args()
 
     model_name = args.model_name
+    model_prefix = args.model_prefix
+    checkpoint_path = args.checkpoint_path
+    
     script_basedir = os.path.dirname(os.path.abspath(__file__))
-    directory = os.path.join(script_basedir, f'../data/real_data_evals/{model_name}')
+    
+    # Determine result folder name
+    log_name = os.path.basename(checkpoint_path).replace('.pth', '') if checkpoint_path else model_name
+    directory = os.path.join(script_basedir, f'../data/real_data_evals/{log_name}')
     if not os.path.exists(directory):
         os.makedirs(directory, exist_ok=True)
     print(args.slurm)
@@ -511,13 +539,13 @@ if __name__ == '__main__':
         log_folder = os.path.join(script_basedir, '../logs/')
         maximum_runtime = set_queue('mlhiwi', log_folder)
         submit_func = ex.submit
-        job = submit_func(main_evaluator, model_name=model_name)
+        job = submit_func(main_evaluator, model_name=model_name, model_prefix=model_prefix, checkpoint_path=checkpoint_path)
 
         print(job)
     else:
         print("Running on local machine")
         for pred_style in ['multipoint']: # Defaulting to multipoint for SC-Mamba
-            main_evaluator(pred_style, model_name)
+            main_evaluator(pred_style, model_name, model_prefix, checkpoint_path)
 
 
     
