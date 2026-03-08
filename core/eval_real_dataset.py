@@ -63,7 +63,9 @@ REAL_DATASET_ASSETS = {
 
 MAX_LENGTH = 512
 
-ssm_config = {
+# Fallback SSM config — used ONLY if neither checkpoint nor --config provides one.
+# WARNING: mamba2 flag must match the architecture used during training.
+DEFAULT_SSM_CONFIG = {
     "bidirectional":False,
     "enc_conv" : True,
     "init_dil_conv" : True,
@@ -74,7 +76,7 @@ ssm_config = {
     "in_proj_norm":False,
     "initial_gelu_flag":True,
     "linear_seq":15,
-    "mamba2":True,
+    "mamba2":False,
     "norm":True,
     "norm_type":"layernorm",
     "num_encoder_layers":2,
@@ -82,8 +84,32 @@ ssm_config = {
     "residual":False,
     "token_embed_len":1024,
 }
-# model_name and sub_day will be parsed logically or passed dynamically
-DEFAULT_MODEL_NAME = "latest_mi_2l_1024e_nores_30-512cl_m2_norm_dconv_i5e5_lr1e-07_mp0.5_initlr1e-05_t300r_pm0.7_nPer_pl10-60_subday_subfreq0.2_perfreq0.5_d0.05_s0.05"
+DEFAULT_MODEL_NAME = "SCMamba_v1"
+
+
+def resolve_ssm_config(checkpoint_data, config_yaml_path=None):
+    """
+    Resolve ssm_config with priority:
+      1. From checkpoint (if 'ssm_config' key exists — future checkpoints)
+      2. From training config YAML (if --config flag is given)
+      3. Fallback to DEFAULT_SSM_CONFIG
+    """
+    # Priority 1: checkpoint
+    if 'ssm_config' in checkpoint_data:
+        print("  📦 ssm_config loaded from checkpoint")
+        return checkpoint_data['ssm_config']
+
+    # Priority 2: training config YAML
+    if config_yaml_path and os.path.exists(config_yaml_path):
+        with open(config_yaml_path) as f:
+            train_config = yaml.load(f, yaml.loader.SafeLoader)
+        if 'ssm_config' in train_config:
+            print(f"  📄 ssm_config loaded from {config_yaml_path}")
+            return train_config['ssm_config']
+
+    # Priority 3: default
+    print("  ⚠️  Using DEFAULT_SSM_CONFIG (no config in checkpoint or --config)")
+    return DEFAULT_SSM_CONFIG
 
 def set_queue(q_, log_folder, maximum_runtime=None):
     global ex
@@ -433,7 +459,7 @@ def csv_writer(csv_file, result_dict):
             row.update(value)
             writer.writerow(row)
 
-def main_evaluator(pred_style=None, model_name=DEFAULT_MODEL_NAME, model_prefix='models', checkpoint_path=None):
+def main_evaluator(pred_style=None, model_name=DEFAULT_MODEL_NAME, model_prefix='models', checkpoint_path=None, config_yaml_path=None):
     
     base_dir = os.path.dirname(os.path.abspath(__file__))
     config_path = os.path.join(base_dir, 'real_data_args.yaml')
@@ -498,7 +524,15 @@ def main_evaluator(pred_style=None, model_name=DEFAULT_MODEL_NAME, model_prefix=
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
-    new_state_dict = adapt_state_dict_keys(torch.load(model_string, map_location=device, weights_only=True)['model_state_dict'])    
+    checkpoint_data = torch.load(model_string, map_location=device, weights_only=False)
+    new_state_dict = adapt_state_dict_keys(checkpoint_data['model_state_dict'])
+
+    # Resolve architecture config from checkpoint / YAML / default
+    ssm_config = resolve_ssm_config(checkpoint_data, config_yaml_path)
+    print(f"  🔧 mamba2 = {ssm_config.get('mamba2', 'N/A')}")
+    print(f"  🔧 d_state = {ssm_config.get('d_state', 'N/A')}")
+    print(f"  🔧 num_encoder_layers = {ssm_config.get('num_encoder_layers', 'N/A')}")
+
     context_lens = [512]
     
     for dataset_name in REAL_DATASETS.keys():
@@ -544,7 +578,9 @@ if __name__ == '__main__':
     parser.add_argument("-m", "--model_name", type=str, default=DEFAULT_MODEL_NAME, help="Model name to evaluate")
     parser.add_argument("-p", "--model_prefix", type=str, default='models', help="Directory containing models")
     parser.add_argument("-c", "--checkpoint_path", type=str, default=None, help="Explicit path to a .pth file (overrides -m and -p)")
+    parser.add_argument("-cfg", "--config", type=str, default=None, help="Path to training config YAML (for ssm_config)")
     args = parser.parse_args()
+    config_yaml_path = args.config
 
     model_name = args.model_name
     model_prefix = args.model_prefix
@@ -569,13 +605,13 @@ if __name__ == '__main__':
         log_folder = os.path.join(script_basedir, '../logs/')
         maximum_runtime = set_queue('mlhiwi', log_folder)
         submit_func = ex.submit
-        job = submit_func(main_evaluator, model_name=model_name, model_prefix=model_prefix, checkpoint_path=checkpoint_path)
+        job = submit_func(main_evaluator, model_name=model_name, model_prefix=model_prefix, checkpoint_path=checkpoint_path, config_yaml_path=config_yaml_path)
 
         print(job)
     else:
         print("Running on local machine")
         for pred_style in ['multipoint']: # Defaulting to multipoint for SC-Mamba
-            main_evaluator(pred_style, model_name, model_prefix, checkpoint_path)
+            main_evaluator(pred_style, model_name, model_prefix, checkpoint_path, config_yaml_path)
 
 
     

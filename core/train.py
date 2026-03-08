@@ -350,6 +350,7 @@ def train_model(config):
                 'scheduler_state_dict': scheduler.state_dict() if config['lr_scheduler'] == 'cosine' else None,
                 'epoch': epoch,
                 'best_val_loss': best_val_loss,
+                'ssm_config': config.get('ssm_config', {}),
             }
             os.makedirs(config['model_prefix'], exist_ok=True)
             torch.save(best_ckpt, f"{config['model_prefix']}/{config['model_save_name']}_best.pth")
@@ -399,6 +400,7 @@ def train_model(config):
                 'optimizer_state_dict': optimizer.state_dict(),
                 'scheduler_state_dict': scheduler.state_dict() if config['lr_scheduler'] == "cosine" else None,
                 'epoch': epoch,
+                'ssm_config': config.get('ssm_config', {}),
             }
             torch.save(ckpt, f"{config['model_prefix']}/{config['model_save_name']}.pth")
 
@@ -412,6 +414,7 @@ def train_model(config):
         'optimizer_state_dict': optimizer.state_dict(),
         'scheduler_state_dict': scheduler.state_dict() if has_scheduler else None,
         'epoch': epoch,
+        'ssm_config': config.get('ssm_config', {}),
     }
     torch.save(ckpt, f"{config['model_prefix']}/{config['model_save_name']}_Final.pth")
 
