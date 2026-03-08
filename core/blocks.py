@@ -103,7 +103,10 @@ class DilatedConv1dBlock(nn.Module):
 class BiMambaEncoderBlock(nn.Module):
     def __init__(self, embed_dim, norm=True, norm_type='layernorm', residual=False, name='SSMEncoderBlock', mamba2=False,
                  enc_conv=False, enc_conv_kernel=5, enc_conv_dilation=0, d_state=128, block_expansion=2,
-                 chunk_size=256, **kwargs):
+                 chunk_size=256, headdim=128, **kwargs):
+        # headdim=128: ensures BLOCK_SIZE_M (max 128, pruner-valid) never exceeds headdim.
+        # With headdim=64, BLOCK_SIZE_M=128 creates partial thread blocks that cause
+        # LLVM vectorization to fail with IndexError: map::at in Triton's make_llir.
         super().__init__()
         self.enc_conv = enc_conv
         self.name = name
@@ -125,18 +128,20 @@ class BiMambaEncoderBlock(nn.Module):
         
         if mamba2:
             self.mamba_layer_forward = Mamba2(
-            d_model=embed_dim, # Model dimension d_model
-            d_state=d_state,  # SSM state expansion factor
-            d_conv=4,    # Local convolution width
-            expand=block_expansion,    # Block expansion factor
-            chunk_size=chunk_size,     # Must satisfy seq_len % chunk_size == 0
+            d_model=embed_dim,
+            d_state=d_state,
+            d_conv=4,
+            expand=block_expansion,
+            headdim=headdim,      # Must be >= max(BLOCK_SIZE_M)=128 to avoid partial Triton blocks
+            chunk_size=chunk_size,
             )
             self.mamba_layer_backward = Mamba2(
-            d_model=embed_dim, # Model dimension d_model
-            d_state=d_state,  # SSM state expansion factor
-            d_conv=4,    # Local convolution width
-            expand=block_expansion,    # Block expansion factor
-            chunk_size=chunk_size,     # Must satisfy seq_len % chunk_size == 0
+            d_model=embed_dim,
+            d_state=d_state,
+            d_conv=4,
+            expand=block_expansion,
+            headdim=headdim,      # Must be >= max(BLOCK_SIZE_M)=128 to avoid partial Triton blocks
+            chunk_size=chunk_size,
         )
             
         if self.enc_conv:
@@ -184,7 +189,10 @@ class BiMambaEncoderBlock(nn.Module):
 class SSMEncoderBlock(nn.Module):
     def __init__(self, embed_dim, norm=True, norm_type='layernorm', residual=False, name='SSMEncoderBlock', mamba2=False,
                  enc_conv=False, enc_conv_kernel=5, enc_conv_dilation=0, d_state=128, block_expansion=2,
-                 chunk_size=256, **kwargs):
+                 chunk_size=256, headdim=128, **kwargs):
+        # headdim=128: ensures BLOCK_SIZE_M (max 128, pruner-valid) never exceeds headdim.
+        # With headdim=64 (default), BLOCK_SIZE_M=128 creates partial thread blocks that
+        # cause LLVM vectorization to fail with IndexError: map::at in Triton's make_llir.
         super().__init__()
         
         self.enc_conv = enc_conv
@@ -200,11 +208,12 @@ class SSMEncoderBlock(nn.Module):
 
         if mamba2:
             self.mamba_layer = Mamba2(
-                d_model=embed_dim, # Model dimension d_model
-                d_state=d_state,  # SSM state expansion factor ## originally 32
-                d_conv=4,    # Local convolution width
-                expand=block_expansion,    # Block expansion factor
-                chunk_size=chunk_size,     # Must satisfy seq_len % chunk_size == 0
+                d_model=embed_dim,
+                d_state=d_state,
+                d_conv=4,
+                expand=block_expansion,
+                headdim=headdim,      # Must be >= max(BLOCK_SIZE_M)=128 to avoid partial Triton blocks
+                chunk_size=chunk_size,
             )
             
         if self.enc_conv:

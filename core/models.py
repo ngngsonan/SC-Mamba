@@ -37,6 +37,7 @@ class SC_SSMModelBackbone(nn.Module):
             d_state=128,
             block_expansion=2,
             chunk_size=256,  # Must match Mamba2 internal chunk_size (default=256); seq_len is padded to this multiple
+            headdim=128,     # Must be >= max(BLOCK_SIZE_M)=128; headdim=64 (default) causes partial Triton blocks
             **kwargs
         ):
         super().__init__()
@@ -69,12 +70,14 @@ class SC_SSMModelBackbone(nn.Module):
             self.mamba_encoder_layers = nn.ModuleList([BiMambaEncoderBlock(token_embed_len, norm, norm_type, residual,
                                                                            d_state=d_state, block_expansion=block_expansion,
                                                                            mamba2=mamba2, conv_d=conv_d,
-                                                                           chunk_size=chunk_size) for _ in range(self.num_encoder_layers)])
+                                                                           chunk_size=chunk_size,
+                                                                           headdim=headdim) for _ in range(self.num_encoder_layers)])
         else:
             self.mamba_encoder_layers = nn.ModuleList([SSMEncoderBlock(token_embed_len, norm, norm_type, residual,
                                                                        d_state=d_state, block_expansion=block_expansion,
                                                                        mamba2=mamba2, conv_d=conv_d,
-                                                                       chunk_size=chunk_size) for _ in range(self.num_encoder_layers)])
+                                                                       chunk_size=chunk_size,
+                                                                       headdim=headdim) for _ in range(self.num_encoder_layers)])
         
         # STRIPPED: self.final_output = nn.Linear(token_embed_len, 1)
 
