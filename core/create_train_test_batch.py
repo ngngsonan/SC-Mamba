@@ -388,7 +388,7 @@ def create_train_test_batch_dl(config, device, cpus_available, multipoint=False,
         collate_fn=train_dataset.collate_fn,
         worker_init_fn=train_dataset.worker_init_fn,
         num_workers=cpus_available,
-        prefetch_factor=15 if cpus_available > 0 else None,
+        prefetch_factor=2 if cpus_available > 0 else None,  # Reduced from 15 to 2 to prevent RAM exhaustion
         persistent_workers=cpus_available > 0,
     )
     val_dataset = GenerativeDatasetMultiPoints(config, cpus_available=cpus_available, device=device, initial_epoch=0, mode='val')\
@@ -399,8 +399,7 @@ def create_train_test_batch_dl(config, device, cpus_available, multipoint=False,
         shuffle=False,
         collate_fn=val_dataset.collate_fn,
         worker_init_fn=val_dataset.worker_init_fn,
-        num_workers=cpus_available,
-        prefetch_factor=15 if cpus_available > 0 else None,
-        persistent_workers=cpus_available > 0,
+        num_workers=0,  # CRITICAL: Prevent spawning a 2nd pool of multiprocessing workers causing SegFaults
+        # prefetch_factor and persistent_workers omitted since num_workers=0
     )
     return train_data_loader, val_data_loader
