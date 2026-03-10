@@ -77,18 +77,7 @@ class GenerativeDatasetMultiPoints(IterableDataset):
         self.spike_batch_ratio = config["prior_config"]["spike_batch_ratio"]
                 
     def collate_fn(self, batch):
-        return self.pin_memory(batch)
-
-    def pin_memory(self, batch):
-        if not torch.cuda.is_available():
-            return batch
-        batch['ts'] = batch['ts'].pin_memory(device=self.device)
-        batch['history'] = batch['history'].pin_memory(device=self.device)
-        batch['target_dates'] = batch['target_dates'].pin_memory(device=self.device)
-        batch['target_values'] = batch['target_values'].pin_memory(device=self.device)
-        batch['task'] = batch['task'].pin_memory(device=self.device)
         return batch
-        
 
     def worker_init_fn(self, worker_id):
         worker_seed = torch.initial_seed() % (2**32)
@@ -251,24 +240,12 @@ class GenerativeDataset(IterableDataset):
         self.spike_batch_ratio = config["prior_config"]["spike_batch_ratio"]
 
     def collate_fn(self, batch):
-        return self.pin_memory(batch)
-
-    def pin_memory(self, batch):
-        if torch.cuda.device_count() < 2:
-            return batch
-        batch['ts'] = batch['ts'].pin_memory(device=self.device)
-        batch['history'] = batch['history'].pin_memory(device=self.device)
-        batch['target_dates'] = batch['target_dates'].pin_memory(device=self.device)
-        batch['target_values'] = batch['target_values'].pin_memory(device=self.device)
-        batch['task'] = batch['task'].pin_memory(device=self.device)
         return batch
-        
 
     def worker_init_fn(self, worker_id):
-        # Your custom worker initialization logic
-        seed = (torch.initial_seed() | (int(worker_id) + np.random.randint(0, 1000))) % (2**32)
-        np.random.seed(seed)
-        torch.manual_seed(seed)
+        worker_seed = torch.initial_seed() % (2**32)
+        np.random.seed(worker_seed)
+        random.seed(worker_seed)
 
     def __iter__(self):
         for _ in range(self.batches_per_iter):
@@ -389,6 +366,7 @@ def create_train_test_batch_dl(config, device, cpus_available, multipoint=False,
         num_workers=cpus_available,
         prefetch_factor=2 if cpus_available > 0 else None,  # Reduced from 15 to 2 to prevent RAM exhaustion
         persistent_workers=cpus_available > 0,
+        pin_memory=torch.cuda.is_available()
     )
     val_dataset = GenerativeDatasetMultiPoints(config, cpus_available=cpus_available, device=device, initial_epoch=0, mode='val')\
         if multipoint else GenerativeDataset(config, cpus_available=cpus_available, device=device, initial_epoch=0, mode='val')
@@ -399,6 +377,6 @@ def create_train_test_batch_dl(config, device, cpus_available, multipoint=False,
         collate_fn=val_dataset.collate_fn,
         worker_init_fn=val_dataset.worker_init_fn,
         num_workers=0,  # CRITICAL: Prevent spawning a 2nd pool of multiprocessing workers causing SegFaults
-        # prefetch_factor and persistent_workers omitted since num_workers=0
+        pin_memory=torch.cuda.is_available()
     )
     return train_data_loader, val_data_loader
