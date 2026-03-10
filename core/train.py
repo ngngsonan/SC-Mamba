@@ -134,9 +134,18 @@ def train_model(config):
 
         model.load_state_dict(ckpt['model_state_dict'])
         optimizer.load_state_dict(ckpt['optimizer_state_dict'])
-        if config['lr_scheduler'] == 'cosine' and ckpt.get('scheduler_state_dict') is not None:
-            scheduler.load_state_dict(ckpt['scheduler_state_dict'])
-            print(f'   Scheduler state loaded (last_lr={scheduler.get_last_lr()[0]:.2e})')
+        if config['lr_scheduler'] in ('cosine', 'cosine_warm_restarts'):
+            if ckpt.get('scheduler_state_dict') is not None:
+                scheduler.load_state_dict(ckpt['scheduler_state_dict'])
+                print(f'   Scheduler state loaded (last_lr={scheduler.get_last_lr()[0]:.2e})')
+            else:
+                # Fallback for old checkpoints that saved None due to bug
+                if config['lr_scheduler'] == 'cosine_warm_restarts':
+                    scheduler.step(ckpt.get('epoch', 0))
+                elif config['lr_scheduler'] == 'cosine':
+                    for _ in range(ckpt.get('epoch', 0)):
+                        scheduler.step()
+                print(f"   ⚠️  Recovered lost scheduler state by fast-forwarding to epoch {ckpt.get('epoch', 0)}")
         initial_epoch = ckpt['epoch'] + 1
         best_val_loss = ckpt.get('best_val_loss', float('inf'))
         print(f'   ▶ Resuming from epoch {initial_epoch}, best_val_loss={best_val_loss:.4f}')
@@ -361,10 +370,11 @@ def train_model(config):
         # Save best checkpoint whenever validation improves
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
+            has_scheduler = config['lr_scheduler'] in ('cosine', 'cosine_warm_restarts')
             best_ckpt = {
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
-                'scheduler_state_dict': scheduler.state_dict() if config['lr_scheduler'] == 'cosine' else None,
+                'scheduler_state_dict': scheduler.state_dict() if has_scheduler else None,
                 'epoch': epoch,
                 'best_val_loss': best_val_loss,
                 'ssm_config': config.get('ssm_config', {}),
@@ -412,10 +422,11 @@ def train_model(config):
             scheduler.step(epoch + 1)
             
         if epoch % 5 == 4:
+            has_scheduler = config['lr_scheduler'] in ('cosine', 'cosine_warm_restarts')
             ckpt = {
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
-                'scheduler_state_dict': scheduler.state_dict() if config['lr_scheduler'] == "cosine" else None,
+                'scheduler_state_dict': scheduler.state_dict() if has_scheduler else None,
                 'epoch': epoch,
                 'ssm_config': config.get('ssm_config', {}),
             }
