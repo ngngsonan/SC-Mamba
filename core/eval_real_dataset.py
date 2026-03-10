@@ -477,7 +477,7 @@ def csv_writer(csv_file, result_dict):
             row.update(value)
             writer.writerow(row)
 
-def main_evaluator(pred_style=None, checkpoint_path=None, config_yaml_path=None):
+def main_evaluator(pred_style=None, checkpoint_path=None, config_yaml_path=None, out_name=None):
     
     base_dir = os.path.dirname(os.path.abspath(__file__))
     config_path = os.path.join(base_dir, 'real_data_args.yaml')
@@ -500,13 +500,16 @@ def main_evaluator(pred_style=None, checkpoint_path=None, config_yaml_path=None)
         sys.exit(1)
 
     model_string = checkpoint_path
-    # Derive model name from filename for result directory naming
-    model_name = os.path.basename(checkpoint_path).replace('.pth', '')
-    # Strip _best / _Final suffixes for cleaner directory names
-    for suffix in ('_best', '_Final'):
-        if model_name.endswith(suffix):
-            model_name = model_name[:-len(suffix)]
-            break
+    if out_name:
+        model_name = out_name
+    else:
+        # Derive model name from filename for result directory naming
+        model_name = os.path.basename(checkpoint_path).replace('.pth', '')
+        # Strip _best / _Final suffixes for cleaner directory names
+        for suffix in ('_best', '_Final'):
+            if model_name.endswith(suffix):
+                model_name = model_name[:-len(suffix)]
+                break
     print(f"  model  : {model_name}")
     print(f"{'='*60}\n")
 
@@ -584,6 +587,8 @@ if __name__ == '__main__':
                         help="Path to checkpoint .pth file")
     parser.add_argument("-cfg", "--config", type=str, default=None,
                         help="Path to training config YAML (for ssm_config)")
+    parser.add_argument("-o", "--out_name", type=str, default=None,
+                        help="Explicit output directory model name (bypasses _best/_Final stripping)")
     parser.add_argument("-s", "--slurm", type=bool, default=False,
                         help="Run on SLURM cluster")
     args = parser.parse_args()
@@ -599,9 +604,9 @@ if __name__ == '__main__':
         log_folder = os.path.join(script_basedir, '../logs/')
         maximum_runtime = set_queue('mlhiwi', log_folder)
         submit_func = ex.submit
-        job = submit_func(main_evaluator, checkpoint_path=checkpoint_path, config_yaml_path=config_yaml_path)
+        job = submit_func(main_evaluator, checkpoint_path=checkpoint_path, config_yaml_path=config_yaml_path, out_name=args.out_name)
         print(job)
     else:
         print("Running on local machine")
         for pred_style in ['multipoint']:
-            main_evaluator(pred_style, checkpoint_path, config_yaml_path)
+            main_evaluator(pred_style, checkpoint_path, config_yaml_path, out_name=args.out_name)
