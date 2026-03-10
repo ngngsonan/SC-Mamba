@@ -190,7 +190,11 @@ def train_model(config):
         running_kl_loss = 0.0
         train_epoch_loss = 0.0
         batch_idx = 0
+        if config.get('debug_prints', False):
+            print("Waiting for first batch from dataloader...", flush=True)
         for batch_id, batch in enumerate(train_dataloader):
+            if config.get('debug_prints', False):
+                print(f"[{time.time() - epoch_start_time:.2f}s] Fetched batch {batch_id}", flush=True)
             data, target = {k: v.to(device) for k, v in batch.items() if k != 'target_values'}, batch['target_values'].to(device)           
             avoid_constant_inputs(data['history'], target)
             
@@ -215,9 +219,17 @@ def train_model(config):
                     data['target_dates'] = data['target_dates'][:, start_pred:end_pred].contiguous()
                     data['complete_target'] = data['complete_target'][:, start_pred:end_pred].contiguous()
                     data['task'] = data['task'][:, start_pred:end_pred].contiguous()
+                if config.get('debug_prints', False):
+                    print(f"[{time.time() - epoch_start_time:.2f}s] Running forward pass (Mamba2 compilation may take up to 10 mins on first batch)...", flush=True)
                 output = model(data, prediction_length=pred_len)
+                if config.get('debug_prints', False):
+                    print(f"[{time.time() - epoch_start_time:.2f}s] Forward pass complete", flush=True)
             else:
+                if config.get('debug_prints', False):
+                    print(f"[{time.time() - epoch_start_time:.2f}s] Running forward pass...", flush=True)
                 output = model(data, prediction_length=pred_len)
+                if config.get('debug_prints', False):
+                    print(f"[{time.time() - epoch_start_time:.2f}s] Forward pass complete", flush=True)
 
             if config['scaler'] == 'min_max':
                 max_scale = output['scale'][0].squeeze(-1)
@@ -427,10 +439,14 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--config", default="./config.batch_ddp.yaml", help="Path to config file")
+    parser.add_argument("--debug_prints", action="store_true", help="Enable verbose print statements for execution timing")
     args = parser.parse_args()
 
     with open(args.config) as config_file:
         config = yaml.load(config_file, yaml.loader.SafeLoader)
+    
+    # Inject debug_prints into config
+    config['debug_prints'] = args.debug_prints
     
     # for wandb offline mode (can comment if needed):
     os.environ['WANDB_MODE'] = "online" if config['wandb'] else 'offline'
