@@ -269,13 +269,13 @@ def train_model(config):
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 
             optimizer.step()
-
-            torch.cuda.empty_cache()
             
             if config['scaler'] == 'min_max':
                 inv_scaled_output = (output['mu'] * (max_scale - min_scale)) + min_scale
             else:
                 inv_scaled_output = (output['mu'] * output['scale'][1].squeeze(-1)) + output['scale'][0].squeeze(-1)
+            
+            inv_scaled_output = inv_scaled_output.detach()
 
             # Update metrics
             train_mape.update(inv_scaled_output, target)

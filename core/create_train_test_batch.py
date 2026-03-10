@@ -80,7 +80,7 @@ class GenerativeDatasetMultiPoints(IterableDataset):
         return self.pin_memory(batch)
 
     def pin_memory(self, batch):
-        if torch.cuda.device_count() < 2:
+        if not torch.cuda.is_available():
             return batch
         batch['ts'] = batch['ts'].pin_memory(device=self.device)
         batch['history'] = batch['history'].pin_memory(device=self.device)
@@ -91,10 +91,9 @@ class GenerativeDatasetMultiPoints(IterableDataset):
         
 
     def worker_init_fn(self, worker_id):
-        # Your custom worker initialization logic
-        seed = (torch.initial_seed() | (int(worker_id) + np.random.randint(0, 1000))) % (2**32)
-        np.random.seed(seed)
-        torch.manual_seed(seed)
+        worker_seed = torch.initial_seed() % (2**32)
+        np.random.seed(worker_seed)
+        random.seed(worker_seed)
 
     def __iter__(self):
         for _ in range(self.batches_per_iter):
