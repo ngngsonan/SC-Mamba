@@ -27,6 +27,7 @@ import argparse
 import torch
 import torch.nn as nn
 import numpy as np
+import random
 import torch.optim as optim
 import time
 import pprint
@@ -57,6 +58,7 @@ def train_model(config):
     print(pprint.pformat(config))
     torch.manual_seed(config['seed'])
     np.random.seed(config['seed'])
+    random.seed(config['seed'])  # FIX: seed Python's random module for reproducibility
 
     # set device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -157,6 +159,13 @@ def train_model(config):
         print('Starting fresh training (no checkpoint loaded)')
         model = model.to(device)
     
+    # Fast-forward RNG state to avoid repeating identical synthetic data batches when resuming
+    if initial_epoch > 0:
+        new_seed = config['seed'] + initial_epoch * 1000
+        print(f"Advancing random seeds by {initial_epoch} epochs to avoid repeating data on resume.")
+        torch.manual_seed(new_seed)
+        np.random.seed(new_seed % (2**32 - 1))
+        random.seed(new_seed % (2**32 - 1))
     
     train_dataloader, test_dataloader = create_train_test_batch_dl(config=config,
                                                                    initial_epoch=initial_epoch,
@@ -198,6 +207,7 @@ def train_model(config):
         running_nll_loss = 0.0
         running_kl_loss = 0.0
         train_epoch_loss = 0.0
+        full_epoch_accumulated_loss = 0.0  # FIX: true full-epoch loss for WandB logging
         batch_idx = 0
         if config.get('debug_prints', False):
             print("Waiting for first batch from dataloader...", flush=True)
@@ -284,9 +294,10 @@ def train_model(config):
             running_loss += loss.item()
             running_nll_loss += nll_loss_val.item()
             running_kl_loss += kl_divergence.item()
+            full_epoch_accumulated_loss += loss.item()  # FIX: track full-epoch sum
 
             if batch_idx == config['training_rounds'] - 1:
-                train_epoch_loss = running_loss / (batch_idx%10 + 1)
+                train_epoch_loss = full_epoch_accumulated_loss / config['training_rounds']
 
             if batch_idx % 10 == 9:  # Log every 10 batches
                 avg_loss = running_loss / 10
@@ -324,9 +335,9 @@ def train_model(config):
                 else:                
                     scaled_target = (target - output['scale'][0].squeeze(-1)) / output['scale'][1].squeeze(-1)
                 
-                # Validation Loss (NLL)
+                # Validation Loss (NLL) — use annealed beta consistent with training
                 val_nll = nll_loss(output['mu'], output['sigma2'], scaled_target.float()).item()
-                val_loss = val_nll + config.get('beta_kl', 0.1) * output['kl_loss'].item()
+                val_loss = val_nll + beta * output['kl_loss'].item()
                 total_val_loss += val_loss
 
                 if batch_id % 10 == 9:
@@ -346,7 +357,7 @@ def train_model(config):
                     break
 
         # Compute and log validation metrics
-        avg_val_loss = total_val_loss / config['validation_rounds']
+        avg_val_loss = total_val_loss / max(1, val_batch_idx)
         print(f'Epoch: {epoch+1}, SC. Validation Loss: {avg_val_loss:.4f} From torchmetric: {val_mse.compute():.4f}')
         if config["wandb"]:    
             wandb.log({'epoch_metrics': {
@@ -368,7 +379,8 @@ def train_model(config):
         val_smape.reset()
 
         # Save best checkpoint whenever validation improves
-        if avg_val_loss < best_val_loss:
+        # FIX: Guard against val_batch_idx=0 (empty dataloader) producing spurious 0.0 loss
+        if val_batch_idx > 0 and avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
             has_scheduler = config['lr_scheduler'] in ('cosine', 'cosine_warm_restarts')
             best_ckpt = {
@@ -409,6 +421,10 @@ def train_model(config):
                 res_dict['real_dataset_metrics']['crps'][real_dataset] = real_crps
                 if config["wandb"]:
                     wandb.log(res_dict)
+            # FIX: Explicitly restore to train mode after real dataset evaluation
+            # validate_on_real_dataset calls model.eval() internally; next epoch's model.train()
+            # at the top of the loop covers this, but being explicit here is safer.
+            model.train()
         
         # LR Scheduler step — separated by scheduler type to avoid calling
         # CosineAnnealingWarmRestarts without the required epoch arg.
@@ -428,6 +444,7 @@ def train_model(config):
                 'optimizer_state_dict': optimizer.state_dict(),
                 'scheduler_state_dict': scheduler.state_dict() if has_scheduler else None,
                 'epoch': epoch,
+                'best_val_loss': best_val_loss,  # FIX: Preserve best_val_loss across session breaks
                 'ssm_config': config.get('ssm_config', {}),
             }
             torch.save(ckpt, f"{config['model_prefix']}/{config['model_save_name']}.pth")
@@ -442,6 +459,7 @@ def train_model(config):
         'optimizer_state_dict': optimizer.state_dict(),
         'scheduler_state_dict': scheduler.state_dict() if has_scheduler else None,
         'epoch': epoch,
+        'best_val_loss': best_val_loss,  # FIX: Preserve for resumability
         'ssm_config': config.get('ssm_config', {}),
     }
     torch.save(ckpt, f"{config['model_prefix']}/{config['model_save_name']}_Final.pth")

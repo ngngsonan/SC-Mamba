@@ -45,7 +45,11 @@ class GenerativeDatasetMultiPoints(IterableDataset):
             self.batches_per_iter = int(np.ceil(config['validation_rounds'] // cpus_available))
 
         # when training is continued, we need to adjust the batch counter for the curriculum learning approach
-        self.batch_counter = initial_epoch * self.batches_per_iter #defaults to 0 if not continuing training
+        # FIX: Guard with continue_training flag, consistent with GenerativeDataset sibling class
+        if config.get('continue_training', False):
+            self.batch_counter = initial_epoch * self.batches_per_iter
+        else:
+            self.batch_counter = 0
         self.device = device
         self.return_target_series = return_target_series
 
@@ -95,7 +99,9 @@ class GenerativeDatasetMultiPoints(IterableDataset):
         seq_len = np.random.randint(self.min_seq_len, self.max_seq_len + 1) + pred_len
 
         if self.curriculum_learning:
-            prior_fraction = self.gp_fractions[self.batch_counter]
+            # FIX: Clamp index to prevent IndexError when batch_counter exceeds array size on long resumes
+            idx = min(self.batch_counter, len(self.gp_fractions) - 1)
+            prior_fraction = self.gp_fractions[idx]
         else:
             prior_fraction = self.prior_mix_frac
 
@@ -258,7 +264,9 @@ class GenerativeDataset(IterableDataset):
         seq_len = np.random.randint(self.min_seq_len, self.max_seq_len + 1) + pred_len
 
         if self.curriculum_learning:
-            prior_fraction = self.gp_fractions[self.batch_counter]
+            # FIX: Clamp index to prevent IndexError when batch_counter exceeds array size on long resumes
+            idx = min(self.batch_counter, len(self.gp_fractions) - 1)
+            prior_fraction = self.gp_fractions[idx]
         else:
             prior_fraction = self.prior_mix_frac
 
@@ -355,8 +363,8 @@ class GenerativeDataset(IterableDataset):
 
 def create_train_test_batch_dl(config, device, cpus_available, multipoint=False, initial_epoch=0):
     print(f"multipoint data generation: {multipoint}")
-    train_dataset = GenerativeDatasetMultiPoints(config, cpus_available=cpus_available, device=device, initial_epoch=0, mode='train') \
-        if multipoint else GenerativeDataset(config, cpus_available=cpus_available, device=device, initial_epoch=0, mode='train')
+    train_dataset = GenerativeDatasetMultiPoints(config, cpus_available=cpus_available, device=device, initial_epoch=initial_epoch, mode='train') \
+        if multipoint else GenerativeDataset(config, cpus_available=cpus_available, device=device, initial_epoch=initial_epoch, mode='train')
     train_data_loader = DataLoader(
         dataset=train_dataset,
         batch_size=None,
@@ -368,8 +376,9 @@ def create_train_test_batch_dl(config, device, cpus_available, multipoint=False,
         persistent_workers=cpus_available > 0,
         pin_memory=torch.cuda.is_available()
     )
-    val_dataset = GenerativeDatasetMultiPoints(config, cpus_available=cpus_available, device=device, initial_epoch=0, mode='val')\
-        if multipoint else GenerativeDataset(config, cpus_available=cpus_available, device=device, initial_epoch=0, mode='val')
+    # val_data_loader uses num_workers=0, therefore GenerativeDataset must be initialized with cpus_available=1
+    val_dataset = GenerativeDatasetMultiPoints(config, cpus_available=1, device=device, initial_epoch=initial_epoch, mode='val')\
+        if multipoint else GenerativeDataset(config, cpus_available=1, device=device, initial_epoch=initial_epoch, mode='val')
     val_data_loader = DataLoader(
         dataset=val_dataset,
         batch_size=None,
