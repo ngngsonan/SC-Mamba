@@ -492,7 +492,7 @@ def train_model(config):
         wandb.finish()
 
     # Save the final model — guard against empty loop (initial_epoch >= num_epochs)
-    final_epoch = epoch if 'epoch' in dir() else max(initial_epoch - 1, 0)
+    final_epoch = epoch if initial_epoch < config['num_epochs'] else max(initial_epoch - 1, 0)
     if initial_epoch < config['num_epochs']:
         has_scheduler = config['lr_scheduler'] in ('cosine', 'cosine_warm_restarts')
         ckpt = {
