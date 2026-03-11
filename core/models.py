@@ -181,9 +181,9 @@ class SpectralVariationalLayer(nn.Module):
             nn.Linear(d_model, complex_dim)
         )
         
-        # Learnable causal cut-off threshold τ — initialized at 0.1 so the filter
-        # starts with moderate sparsity and learns the right threshold from data.
-        self.tau = nn.Parameter(torch.tensor(0.1))
+        # Learnable causal cut-off threshold τ — initialized at 2.0 so the filter
+        # starts with high sparsity to enforce filtering early in training.
+        self.tau = nn.Parameter(torch.tensor(2.0))
 
         # α controls the steepness of the sigmoid approximating a hard step-function.
         # DESIGN CHOICE: Made learnable (nn.Parameter) rather than hard-coded at 50.
@@ -315,6 +315,8 @@ class SCMamba_Forecaster(nn.Module):
         # 3. Distributional Decoding
         mu = self.mu_head(Z_graph).squeeze(-1)
         sigma2 = self.sigma_head(Z_graph).squeeze(-1) + 1e-6 # Add epsilon for numerical stability
+        # DIAG FIX: Prevent Sigma Collapse Hack
+        sigma2 = torch.clamp(sigma2, min=0.05)
         
         return {
             'mu': mu,
