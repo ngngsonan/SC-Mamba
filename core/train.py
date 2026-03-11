@@ -249,20 +249,20 @@ def train_model(config):
                     data['target_dates'] = data['target_dates'][:, start_pred:end_pred].contiguous()
                     data['complete_target'] = data['complete_target'][:, start_pred:end_pred].contiguous()
                     data['task'] = data['task'][:, start_pred:end_pred].contiguous()
-                if config.get('diag_prints', False):
-                    print(f"[{time.time() - epoch_start_time:.2f}s] Running forward pass (Mamba2 compilation may take up to 10 mins on first batch)...", flush=True)
+                # if config.get('diag_prints', False):
+                #     print(f"[{time.time() - epoch_start_time:.2f}s] Running forward pass (Mamba2 compilation may take up to 10 mins on first batch)...", flush=True)
                 output = model(data, prediction_length=pred_len)
-                if config.get('diag_prints', False):
-                    print(f"[{time.time() - epoch_start_time:.2f}s] Forward pass complete", flush=True)
+                # if config.get('diag_prints', False):
+                #     print(f"[{time.time() - epoch_start_time:.2f}s] Forward pass complete", flush=True)
                 # DIAG: log first batch shapes and spectral layer info
                 if batch_idx == 0 and config.get('diag_prints', False):
                     print(f"  [DIAG] history={data['history'].shape}, pred_len={pred_len}, mu={output['mu'].shape}, sigma2 range=[{output['sigma2'].min().item():.6f}, {output['sigma2'].max().item():.4f}], kl={output['kl_loss'].item():.6f}")
             else:
-                if config.get('diag_prints', False):
-                    print(f"[{time.time() - epoch_start_time:.2f}s] Running forward pass...", flush=True)
+                # if config.get('diag_prints', False):
+                #     print(f"[{time.time() - epoch_start_time:.2f}s] Running forward pass...", flush=True)
                 output = model(data, prediction_length=pred_len)
-                if config.get('diag_prints', False):
-                    print(f"[{time.time() - epoch_start_time:.2f}s] Forward pass complete", flush=True)
+                # if config.get('diag_prints', False):
+                #     print(f"[{time.time() - epoch_start_time:.2f}s] Forward pass complete", flush=True)
 
             if config['scaler'] == 'min_max':
                 max_scale = output['scale'][0].squeeze(-1)
