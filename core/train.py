@@ -485,17 +485,21 @@ def train_model(config):
     if config["wandb"]:
         wandb.finish()
 
-    # Save the final model
-    has_scheduler = config['lr_scheduler'] in ('cosine', 'cosine_warm_restarts')
-    ckpt = {
-        'model_state_dict': model.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict(),
-        'scheduler_state_dict': scheduler.state_dict() if has_scheduler else None,
-        'epoch': epoch,
-        'best_val_loss': best_val_loss,  # FIX: Preserve for resumability
-        'ssm_config': config.get('ssm_config', {}),
-    }
-    torch.save(ckpt, f"{config['model_prefix']}/{config['model_save_name']}_Final.pth")
+    # Save the final model — guard against empty loop (initial_epoch >= num_epochs)
+    final_epoch = epoch if 'epoch' in dir() else max(initial_epoch - 1, 0)
+    if initial_epoch < config['num_epochs']:
+        has_scheduler = config['lr_scheduler'] in ('cosine', 'cosine_warm_restarts')
+        ckpt = {
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'scheduler_state_dict': scheduler.state_dict() if has_scheduler else None,
+            'epoch': final_epoch,
+            'best_val_loss': best_val_loss,
+            'ssm_config': config.get('ssm_config', {}),
+        }
+        torch.save(ckpt, f"{config['model_prefix']}/{config['model_save_name']}_Final.pth")
+    else:
+        print(f"⚠️  No training epochs ran (initial_epoch={initial_epoch} >= num_epochs={config['num_epochs']}). Final checkpoint NOT saved.")
 
 if __name__ == "__main__":
 
