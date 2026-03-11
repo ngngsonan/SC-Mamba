@@ -214,10 +214,10 @@ def train_model(config):
         epoch_sigma2_min = float('inf')  # DIAG: track sigma2 range
         epoch_sigma2_max = 0.0
         batch_idx = 0
-        if config.get('debug_prints', False):
+        if config.get('diag_prints', False):
             print("Waiting for first batch from dataloader...", flush=True)
         for batch_id, batch in enumerate(train_dataloader):
-            if config.get('debug_prints', False):
+            if config.get('diag_prints', False):
                 print(f"[{time.time() - epoch_start_time:.2f}s] Fetched batch {batch_id}", flush=True)
             data, target = {k: v.to(device) for k, v in batch.items() if k != 'target_values'}, batch['target_values'].to(device)           
             avoid_constant_inputs(data['history'], target)
@@ -243,19 +243,19 @@ def train_model(config):
                     data['target_dates'] = data['target_dates'][:, start_pred:end_pred].contiguous()
                     data['complete_target'] = data['complete_target'][:, start_pred:end_pred].contiguous()
                     data['task'] = data['task'][:, start_pred:end_pred].contiguous()
-                if config.get('debug_prints', False):
+                if config.get('diag_prints', False):
                     print(f"[{time.time() - epoch_start_time:.2f}s] Running forward pass (Mamba2 compilation may take up to 10 mins on first batch)...", flush=True)
                 output = model(data, prediction_length=pred_len)
-                if config.get('debug_prints', False):
+                if config.get('diag_prints', False):
                     print(f"[{time.time() - epoch_start_time:.2f}s] Forward pass complete", flush=True)
                 # DIAG: log first batch shapes and spectral layer info
                 if batch_idx == 0 and config.get('diag_prints', False):
                     print(f"  [DIAG] history={data['history'].shape}, pred_len={pred_len}, mu={output['mu'].shape}, sigma2 range=[{output['sigma2'].min().item():.6f}, {output['sigma2'].max().item():.4f}], kl={output['kl_loss'].item():.6f}")
             else:
-                if config.get('debug_prints', False):
+                if config.get('diag_prints', False):
                     print(f"[{time.time() - epoch_start_time:.2f}s] Running forward pass...", flush=True)
                 output = model(data, prediction_length=pred_len)
-                if config.get('debug_prints', False):
+                if config.get('diag_prints', False):
                     print(f"[{time.time() - epoch_start_time:.2f}s] Forward pass complete", flush=True)
 
             if config['scaler'] == 'min_max':
@@ -501,14 +501,15 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--config", default="./config.batch_ddp.yaml", help="Path to config file")
-    parser.add_argument("--debug_prints", action="store_true", help="Enable verbose print statements for execution timing")
+    parser.add_argument("--diag_prints", action="store_true", help="Enable verbose diagnostic prints (timing, shapes, spectral layer stats)")
     args = parser.parse_args()
 
     with open(args.config) as config_file:
         config = yaml.load(config_file, yaml.loader.SafeLoader)
     
-    # Inject debug_prints into config
-    config['debug_prints'] = args.debug_prints
+    # Inject diag_prints into config (CLI flag overrides YAML)
+    if args.diag_prints:
+        config['diag_prints'] = True
     
     # for wandb offline mode (can comment if needed):
     os.environ['WANDB_MODE'] = "online" if config['wandb'] else 'offline'
