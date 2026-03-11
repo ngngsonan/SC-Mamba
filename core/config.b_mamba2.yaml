@@ -72,7 +72,7 @@ pred_len: 60
 # that fights against reconstruction loss. Setting beta_kl=0 removes this harmful term
 # while keeping the spectral layer as a learnable nonlinear projection.
 loss: nll
-beta_kl: 0.0                   # ← Disabled: KL is a no-op for N_assets=1
+beta_kl: 0.1                   # ← Set 0.1: empirically validated in log2 (fred_md MASE 0.864 vs 2.547 with 0.001)
 multipoint: true
 sample_multi_pred: 0.5
 diag_prints: true              # ← diagnostic epoch summaries (LR, beta, NLL, KL, grad_norm)

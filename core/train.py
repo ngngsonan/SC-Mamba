@@ -108,6 +108,7 @@ def train_model(config):
 
     initial_epoch = 0
     best_val_loss = float('inf')
+    best_real_mase = float('inf')  # Tracks best median MASE across real datasets (survives resume)
     # Load state dicts if we are resuming training — prefer best checkpoint over periodic save
     config['model_save_name'] = generate_model_save_name(config)
 
@@ -156,7 +157,8 @@ def train_model(config):
                 print(f"   ⚠️  Recovered lost scheduler state by fast-forwarding to epoch {ckpt.get('epoch', 0)}")
         initial_epoch = ckpt['epoch'] + 1
         best_val_loss = ckpt.get('best_val_loss', float('inf'))
-        print(f'   ▶ Resuming from epoch {initial_epoch}, best_val_loss={best_val_loss:.4f}')
+        best_real_mase = ckpt.get('best_real_mase', float('inf'))
+        print(f'   ▶ Resuming from epoch {initial_epoch}, best_val_loss={best_val_loss:.4f}, best_real_mase={best_real_mase:.4f}')
     else:
         if config['continue_training']:
             print(f'⚠️  continue_training=True but no checkpoint found at:')
@@ -462,6 +464,7 @@ def train_model(config):
                 'scheduler_state_dict': scheduler.state_dict() if has_scheduler else None,
                 'epoch': epoch,
                 'best_val_loss': best_val_loss,
+                'best_real_mase': best_real_mase,
                 'ssm_config': config.get('ssm_config', {}),
             }
             os.makedirs(config['model_prefix'], exist_ok=True)
@@ -494,6 +497,37 @@ def train_model(config):
                 res_dict['real_dataset_metrics']['crps'][real_dataset] = real_crps
                 if config["wandb"]:
                     wandb.log(res_dict)
+
+            # ── Real MASE Checkpoint ──────────────────────────────────────
+            # Metric: median MASE across all evaluated real datasets.
+            # WHY MEDIAN: median excludes inf values (e.g. car_parts constant series)
+            # without requiring explicit dataset filtering. Mean would be pulled to inf.
+            # WHY NOT val_loss: val_loss is NLL on synthetic scaled data; our goal
+            # metric for the paper is MASE on real data (same as Mamba4Cast Table 3).
+            all_mase_values = list(res_dict['real_dataset_metrics']['mase'].values())
+            finite_mase = [m for m in all_mase_values if m != float('inf') and m == m]  # exclude inf and nan
+            if len(finite_mase) > 0:
+                import statistics
+                current_median_mase = statistics.median(finite_mase)
+                if config.get('diag_prints', False):
+                    print(f"  [DIAG:mase] median_real_mase={current_median_mase:.4f} (over {len(finite_mase)} datasets, {len(all_mase_values)-len(finite_mase)} excluded inf/nan)")
+                if current_median_mase < best_real_mase:
+                    best_real_mase = current_median_mase
+                    has_scheduler = config['lr_scheduler'] in ('cosine', 'cosine_warm_restarts')
+                    mase_ckpt = {
+                        'model_state_dict': model.state_dict(),
+                        'optimizer_state_dict': optimizer.state_dict(),
+                        'scheduler_state_dict': scheduler.state_dict() if has_scheduler else None,
+                        'epoch': epoch,
+                        'best_val_loss': best_val_loss,
+                        'best_real_mase': best_real_mase,
+                        'real_mase_detail': res_dict['real_dataset_metrics']['mase'],
+                        'ssm_config': config.get('ssm_config', {}),
+                    }
+                    os.makedirs(config['model_prefix'], exist_ok=True)
+                    torch.save(mase_ckpt, f"{config['model_prefix']}/{config['model_save_name']}_best_mase.pth")
+                    print(f'  🎯 Best MASE checkpoint saved (epoch {epoch+1}, median_mase={best_real_mase:.4f})')
+
             # FIX: Explicitly restore to train mode after real dataset evaluation
             # validate_on_real_dataset calls model.eval() internally; next epoch's model.train()
             # at the top of the loop covers this, but being explicit here is safer.
@@ -518,6 +552,7 @@ def train_model(config):
                 'scheduler_state_dict': scheduler.state_dict() if has_scheduler else None,
                 'epoch': epoch,
                 'best_val_loss': best_val_loss,  # FIX: Preserve best_val_loss across session breaks
+                'best_real_mase': best_real_mase,  # Persist best real MASE across session breaks
                 'ssm_config': config.get('ssm_config', {}),
             }
             torch.save(ckpt, f"{config['model_prefix']}/{config['model_save_name']}.pth")
@@ -535,6 +570,7 @@ def train_model(config):
             'scheduler_state_dict': scheduler.state_dict() if has_scheduler else None,
             'epoch': final_epoch,
             'best_val_loss': best_val_loss,
+            'best_real_mase': best_real_mase,
             'ssm_config': config.get('ssm_config', {}),
         }
         torch.save(ckpt, f"{config['model_prefix']}/{config['model_save_name']}_Final.pth")
