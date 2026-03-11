@@ -208,6 +208,11 @@ def train_model(config):
         running_kl_loss = 0.0
         train_epoch_loss = 0.0
         full_epoch_accumulated_loss = 0.0  # FIX: true full-epoch loss for WandB logging
+        epoch_nll_sum = 0.0      # DIAG: track NLL component separately
+        epoch_kl_sum = 0.0       # DIAG: track KL component separately
+        epoch_grad_norm_sum = 0.0  # DIAG: track gradient norms
+        epoch_sigma2_min = float('inf')  # DIAG: track sigma2 range
+        epoch_sigma2_max = 0.0
         batch_idx = 0
         if config.get('debug_prints', False):
             print("Waiting for first batch from dataloader...", flush=True)
@@ -243,6 +248,9 @@ def train_model(config):
                 output = model(data, prediction_length=pred_len)
                 if config.get('debug_prints', False):
                     print(f"[{time.time() - epoch_start_time:.2f}s] Forward pass complete", flush=True)
+                # DIAG: log first batch shapes and spectral layer info
+                if batch_idx == 0 and config.get('diag_prints', False):
+                    print(f"  [DIAG] history={data['history'].shape}, pred_len={pred_len}, mu={output['mu'].shape}, sigma2 range=[{output['sigma2'].min().item():.6f}, {output['sigma2'].max().item():.4f}], kl={output['kl_loss'].item():.6f}")
             else:
                 if config.get('debug_prints', False):
                     print(f"[{time.time() - epoch_start_time:.2f}s] Running forward pass...", flush=True)
@@ -276,9 +284,18 @@ def train_model(config):
 
             loss.backward()
             # Clip gradients to prevent NLL instability when σ² approaches floor (1e-6 → gradient ≈ 1e6)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 
             optimizer.step()
+
+            # DIAG: accumulate per-epoch diagnostics
+            epoch_nll_sum += nll_loss_val.item()
+            epoch_kl_sum += kl_divergence.item()
+            epoch_grad_norm_sum += grad_norm.item() if isinstance(grad_norm, torch.Tensor) else grad_norm
+            s2_min = output['sigma2'].min().item()
+            s2_max = output['sigma2'].max().item()
+            if s2_min < epoch_sigma2_min: epoch_sigma2_min = s2_min
+            if s2_max > epoch_sigma2_max: epoch_sigma2_max = s2_max
             
             if config['scaler'] == 'min_max':
                 inv_scaled_output = (output['mu'] * (max_scale - min_scale)) + min_scale
@@ -368,7 +385,23 @@ def train_model(config):
                    'lr': optimizer.param_groups[0]['lr']})
         
         epoch_time = time.time() - epoch_start_time
-        print(f'Time taken for epoch: {epoch_time/60} mins {epoch_time%60} secs.')
+        print(f'Time taken for epoch: {epoch_time/60:.1f} mins {epoch_time%60:.0f} secs.')
+
+        # ── DIAGNOSTIC EPOCH SUMMARY ──────────────────────────────────
+        if config.get('diag_prints', False) and batch_idx > 0:
+            current_lr = optimizer.param_groups[0]['lr']
+            print(f"  ╔══════════════ EPOCH {epoch+1} DIAGNOSTICS ══════════════╗")
+            print(f"  ║ LR           = {current_lr:.2e}")
+            print(f"  ║ beta (KL wt) = {beta:.4f}")
+            print(f"  ║ avg NLL      = {epoch_nll_sum / batch_idx:.4f}")
+            print(f"  ║ avg KL       = {epoch_kl_sum / batch_idx:.4f}")
+            print(f"  ║ avg KL×beta  = {beta * epoch_kl_sum / batch_idx:.6f}")
+            print(f"  ║ avg Loss     = {full_epoch_accumulated_loss / batch_idx:.4f}")
+            print(f"  ║ avg GradNorm = {epoch_grad_norm_sum / batch_idx:.4f}")
+            print(f"  ║ sigma2 range = [{epoch_sigma2_min:.6f}, {epoch_sigma2_max:.4f}]")
+            print(f"  ║ val_loss     = {avg_val_loss:.4f}")
+            print(f"  ║ best_val     = {best_val_loss:.4f}")
+            print(f"  ╚═══════════════════════════════════════════════════════╝")
 
         # Reset metrics for the next epoch
         train_mape.reset()
