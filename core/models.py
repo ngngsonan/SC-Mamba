@@ -12,8 +12,10 @@ import numpy as np
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-# DIAG: set SC_MAMBA_DIAG=1 env var to enable per-forward diagnostic prints
-_DIAG = os.environ.get('SC_MAMBA_DIAG', '0') == '1'
+# DIAG: set SC_MAMBA_DIAG=1 env var (or config['diag_prints']=True in train.py)
+# to enable per-forward diagnostic prints. Checked at runtime, not import time.
+def _is_diag():
+    return os.environ.get('SC_MAMBA_DIAG', '0') == '1'
 _diag_count = 0  # only log first N forwards to avoid spam
 
 class SC_SSMModelBackbone(nn.Module):
@@ -133,7 +135,7 @@ class SC_SSMModelBackbone(nn.Module):
 
         # DIAG: log padding waste for first 3 forward passes
         global _diag_count
-        if _DIAG and _diag_count < 3:
+        if _is_diag() and _diag_count < 3:
             waste_pct = pad / target_len * 100 if target_len > 0 else 0
             print(f"  [DIAG:pad] seq_len={L} → padded={target_len} (pad={pad}, waste={waste_pct:.1f}%), chunk_size={self.chunk_size}")
 
@@ -254,7 +256,8 @@ class SpectralVariationalLayer(nn.Module):
         kl_loss = kl_loss / (B * (N_assets // 2 + 1) * P_L * D * 2)
 
         # DIAG: log spectral layer stats for first 3 forward passes
-        if _DIAG and _diag_count < 3:
+        global _diag_count
+        if _is_diag() and _diag_count < 3:
             _diag_count += 1
             with torch.no_grad():
                 fft_diff = (H_freq - torch.fft.rfft(Z_spatial, dim=1)).abs().mean().item()

@@ -56,6 +56,12 @@ def nll_loss(mu, sigma2, target):
 def train_model(config):
     print("config:")
     print(pprint.pformat(config))
+
+    # Enable model-level diagnostics (padding, spectral layer) if diag_prints is set
+    # Must be set before models.py is imported/used, since _is_diag() checks at runtime
+    if config.get('diag_prints', False):
+        os.environ['SC_MAMBA_DIAG'] = '1'
+
     torch.manual_seed(config['seed'])
     np.random.seed(config['seed'])
     random.seed(config['seed'])  # FIX: seed Python's random module for reproducibility
