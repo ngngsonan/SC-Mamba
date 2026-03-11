@@ -255,6 +255,15 @@ class SpectralVariationalLayer(nn.Module):
         # Normalize KL across Batch and Asset Frequency Bins
         kl_loss = kl_loss / (B * (N_assets // 2 + 1) * P_L * D * 2)
 
+        # Causal filter diagnostics
+        sparsity = (mask < 0.01).float().mean()
+        spectral_stats = {
+            'tau': self.tau,
+            'alpha': alpha,
+            'mask_mean': mask.mean(),
+            'sparsity': sparsity
+        }
+
         # DIAG: log spectral layer stats for first 3 forward passes
         global _diag_count
         if _is_diag() and _diag_count < 3:
@@ -263,7 +272,7 @@ class SpectralVariationalLayer(nn.Module):
                 fft_diff = (H_freq - torch.fft.rfft(Z_spatial, dim=1)).abs().mean().item()
                 print(f"  [DIAG:spectral] N_assets={N_assets}, freq_bins={H_freq.shape[1]}, mask=[{mask.min().item():.4f}, {mask.max().item():.4f}], alpha={alpha.item():.2f}, tau={self.tau.item():.4f}, KL={kl_loss.item():.6f}, fft_identity_diff={fft_diff:.2e}")
         
-        return Z_updated, kl_loss
+        return Z_updated, kl_loss, spectral_stats
         
 
 class SCMamba_Forecaster(nn.Module):
@@ -301,7 +310,7 @@ class SCMamba_Forecaster(nn.Module):
         med_scale = backbone_out['scale']
         
         # 2. Spectral Causal Message Passing
-        Z_graph, kl_loss = self.spectral_layer(Z, self.N_assets)
+        Z_graph, kl_loss, spectral_stats = self.spectral_layer(Z, self.N_assets)
         
         # 3. Distributional Decoding
         mu = self.mu_head(Z_graph).squeeze(-1)
@@ -311,5 +320,6 @@ class SCMamba_Forecaster(nn.Module):
             'mu': mu,
             'sigma2': sigma2,
             'scale': med_scale,
-            'kl_loss': kl_loss
+            'kl_loss': kl_loss,
+            'spectral_stats': spectral_stats
         }

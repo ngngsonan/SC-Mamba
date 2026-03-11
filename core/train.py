@@ -219,12 +219,19 @@ def train_model(config):
         epoch_grad_norm_sum = 0.0  # DIAG: track gradient norms
         epoch_sigma2_min = float('inf')  # DIAG: track sigma2 range
         epoch_sigma2_max = 0.0
+        
+        # New Diagnostics
+        epoch_tau_sum = 0.0
+        epoch_alpha_sum = 0.0
+        epoch_sparsity_sum = 0.0
+        epoch_collapse_sum = 0.0
+
         batch_idx = 0
         if config.get('diag_prints', False):
             print("Waiting for first batch from dataloader...", flush=True)
         for batch_id, batch in enumerate(train_dataloader):
-            if config.get('diag_prints', False):
-                print(f"[{time.time() - epoch_start_time:.2f}s] Fetched batch {batch_id}", flush=True)
+            # if config.get('diag_prints', False):
+            #     print(f"[{time.time() - epoch_start_time:.2f}s] Fetched batch {batch_id}", flush=True)
             data, target = {k: v.to(device) for k, v in batch.items() if k != 'target_values'}, batch['target_values'].to(device)           
             avoid_constant_inputs(data['history'], target)
             
@@ -303,6 +310,15 @@ def train_model(config):
             if s2_min < epoch_sigma2_min: epoch_sigma2_min = s2_min
             if s2_max > epoch_sigma2_max: epoch_sigma2_max = s2_max
             
+            if 'spectral_stats' in output:
+                epoch_tau_sum += output['spectral_stats']['tau'].item()
+                epoch_alpha_sum += output['spectral_stats']['alpha'].item()
+                epoch_sparsity_sum += output['spectral_stats']['sparsity'].item()
+            
+            # Collapse tracking: sigma2 < 1e-3
+            collapse_rate = (output['sigma2'] < 1e-3).float().mean().item()
+            epoch_collapse_sum += collapse_rate
+            
             if config['scaler'] == 'min_max':
                 inv_scaled_output = (output['mu'] * (max_scale - min_scale)) + min_scale
             else:
@@ -328,8 +344,22 @@ def train_model(config):
                 avg_kl = running_kl_loss / 10
                 print(f'Epoch: {epoch+1}, Batch: {batch_idx+1}, Total Loss: {avg_loss:.4f}, NLL: {avg_nll:.4f}, KL: {avg_kl:.4f} From torchmetric: {train_mse.compute():.4f}')
                 if config["wandb"]:    
-                    wandb.log({'train_batch_metrics': {'sc_loss': avg_loss, 'nll': avg_nll, 'kl': avg_kl, 'mape': train_mape.compute(), 'smape': train_smape.compute()},
-                          'step':epoch * config['training_rounds'] + batch_idx})
+                    wandb_dict = {
+                        'train_batch_metrics': {
+                            'sc_loss': avg_loss, 
+                            'nll': avg_nll, 
+                            'kl': avg_kl, 
+                            'mape': train_mape.compute(), 
+                            'smape': train_smape.compute()
+                        },
+                        'step': epoch * config['training_rounds'] + batch_idx
+                    }
+                    if 'spectral_stats' in output and config.get('diag_prints', False):
+                        wandb_dict['train_batch_metrics']['tau'] = output['spectral_stats']['tau'].item()
+                        wandb_dict['train_batch_metrics']['alpha'] = output['spectral_stats']['alpha'].item()
+                        wandb_dict['train_batch_metrics']['sparsity'] = output['spectral_stats']['sparsity'].item()
+                        wandb_dict['train_batch_metrics']['sigma2_collapse'] = collapse_rate
+                    wandb.log(wandb_dict)
                 running_loss = 0.0
                 running_nll_loss = 0.0
                 running_kl_loss = 0.0
@@ -405,6 +435,10 @@ def train_model(config):
             print(f"  ║ avg Loss     = {full_epoch_accumulated_loss / batch_idx:.4f}")
             print(f"  ║ avg GradNorm = {epoch_grad_norm_sum / batch_idx:.4f}")
             print(f"  ║ sigma2 range = [{epoch_sigma2_min:.6f}, {epoch_sigma2_max:.4f}]")
+            if epoch_tau_sum > 0 or epoch_sparsity_sum >= 0:
+                print(f"  ║ avg Tau      = {epoch_tau_sum / batch_idx:.4f} (Alpha = {epoch_alpha_sum / batch_idx:.2f})")
+                print(f"  ║ Mask Sparsity= {epoch_sparsity_sum / batch_idx * 100:.2f}%")
+                print(f"  ║ S2 Collapse  = {epoch_collapse_sum / batch_idx * 100:.2f}% (<1e-3)")
             print(f"  ║ val_loss     = {avg_val_loss:.4f}")
             print(f"  ║ best_val     = {best_val_loss:.4f}")
             print(f"  ╚═══════════════════════════════════════════════════════╝")
