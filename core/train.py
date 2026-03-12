@@ -271,8 +271,8 @@ def train_model(config):
                 # batch['x'] : (B, T_ctx, N)   batch['y'] : (B, T_pred, N)
                 # batch['ts_x']: (B, T_ctx, ts_dim)  shared time features
                 N = config['num_assets']
-                xs = batch['x'].to(device)    # (B, T_ctx, N)
-                ys = batch['y'].to(device)    # (B, T_pred, N)
+                xs = torch.nan_to_num(batch['x'].to(device), nan=0.0)    # (B, T_ctx, N)
+                ys = torch.nan_to_num(batch['y'].to(device), nan=0.0)    # (B, T_pred, N)
                 B_sz, T_ctx, _ = xs.shape
                 _, T_pred, _ = ys.shape
 
@@ -448,8 +448,8 @@ def train_model(config):
                 # ── Batch adapter: mirrors the training loop ──────────────────
                 if _multivariate_train:
                     N = config['num_assets']
-                    xs = batch['x'].to(device)          # (B, T_ctx, N)
-                    ys = batch['y'].to(device)          # (B, T_pred, N)
+                    xs = torch.nan_to_num(batch['x'].to(device), nan=0.0)          # (B, T_ctx, N)
+                    ys = torch.nan_to_num(batch['y'].to(device), nan=0.0)          # (B, T_pred, N)
                     B_sz, T_ctx, _ = xs.shape
                     _, T_pred, _   = ys.shape
                     history  = xs.permute(0, 2, 1).reshape(B_sz * N, T_ctx)
