@@ -274,7 +274,7 @@ def train_model(config):
                 ts_x_rep = ts_x.unsqueeze(1).expand(-1, N, -1, -1).reshape(B_sz * N, T_ctx, -1)
                 ts_y     = batch['ts_y'].to(device)                     # (B, T_pred, ts_dim)
                 ts_y_rep = ts_y.unsqueeze(1).expand(-1, N, -1, -1).reshape(B_sz * N, T_pred, -1)
-                target   = ys.permute(0, 2, 1).reshape(B_sz * N, T_pred)
+                target   = ys.permute(0, 2, 1).reshape(B_sz * N, T_pred).contiguous()
 
                 data = {
                     'history'         : history,
@@ -444,7 +444,7 @@ def train_model(config):
                     ts_x_rep = ts_x.unsqueeze(1).expand(-1, N, -1, -1).reshape(B_sz * N, T_ctx, -1)
                     ts_y     = batch['ts_y'].to(device)
                     ts_y_rep = ts_y.unsqueeze(1).expand(-1, N, -1, -1).reshape(B_sz * N, T_pred, -1)
-                    target   = ys.permute(0, 2, 1).reshape(B_sz * N, T_pred)
+                    target   = ys.permute(0, 2, 1).reshape(B_sz * N, T_pred).contiguous()
                     data = {
                         'history'         : history,
                         'ts'              : ts_x_rep,
@@ -481,10 +481,12 @@ def train_model(config):
                     inv_scaled_output = (output['mu'] * (max_scale - min_scale)) + min_scale
                 else:
                     inv_scaled_output = (output['mu'] * output['scale'][1].squeeze(-1)) + output['scale'][0].squeeze(-1)
-                # Update validation metrics
-                val_mape.update(inv_scaled_output, target)
-                val_mse.update(inv_scaled_output, target)
-                val_smape.update(inv_scaled_output, target)
+                # Update validation metrics (contiguous() required for torchmetrics .view(-1))
+                _pred_c   = inv_scaled_output.contiguous()
+                _target_c = target.contiguous()
+                val_mape.update(_pred_c, _target_c)
+                val_mse.update(_pred_c, _target_c)
+                val_smape.update(_pred_c, _target_c)
 
                 val_batch_idx += 1  # FIX: was never incremented, causing only 1 validation batch
                 if val_batch_idx == config['validation_rounds']:
