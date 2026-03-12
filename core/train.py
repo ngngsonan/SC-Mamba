@@ -51,8 +51,19 @@ def nll_loss(mu, sigma2, target):
     """
     # Adding epsilon for numerical stability
     sigma2 = torch.clamp(sigma2, min=1e-6)
-    loss = 0.5 * torch.log(2 * np.pi * sigma2) + 0.5 * ((target - mu) ** 2) / sigma2
+    
+    # Filter out NaN targets (caused by missing values in datasets like cif_2016)
+    valid_mask = ~torch.isnan(target)
+    if valid_mask.sum() == 0:
+        return torch.tensor(0.0, device=mu.device, requires_grad=True)
+        
+    mu_v = mu[valid_mask]
+    sigma2_v = sigma2[valid_mask]
+    target_v = target[valid_mask]
+    
+    loss = 0.5 * torch.log(2 * np.pi * sigma2_v) + 0.5 * ((target_v - mu_v) ** 2) / sigma2_v
     return loss.mean()
+
 
 
 
@@ -382,10 +393,12 @@ def train_model(config):
             
             inv_scaled_output = inv_scaled_output.detach()
 
-            # Update metrics
-            train_mape.update(inv_scaled_output, target)
-            train_mse.update(inv_scaled_output, target)
-            train_smape.update(inv_scaled_output, target)
+            # Update metrics ignoring NaNs
+            valid_mask = ~torch.isnan(target)
+            if valid_mask.sum() > 0:
+                train_mape.update(inv_scaled_output[valid_mask], target[valid_mask])
+                train_mse.update(inv_scaled_output[valid_mask], target[valid_mask])
+                train_smape.update(inv_scaled_output[valid_mask], target[valid_mask])
             running_loss += loss.item()
             running_nll_loss += nll_loss_val.item()
             running_kl_loss += kl_divergence.item()
@@ -484,9 +497,12 @@ def train_model(config):
                 # Update validation metrics (contiguous() required for torchmetrics .view(-1))
                 _pred_c   = inv_scaled_output.contiguous()
                 _target_c = target.contiguous()
-                val_mape.update(_pred_c, _target_c)
-                val_mse.update(_pred_c, _target_c)
-                val_smape.update(_pred_c, _target_c)
+                
+                valid_mask = ~torch.isnan(_target_c)
+                if valid_mask.sum() > 0:
+                    val_mape.update(_pred_c[valid_mask], _target_c[valid_mask])
+                    val_mse.update(_pred_c[valid_mask], _target_c[valid_mask])
+                    val_smape.update(_pred_c[valid_mask], _target_c[valid_mask])
 
                 val_batch_idx += 1  # FIX: was never incremented, causing only 1 validation batch
                 if val_batch_idx == config['validation_rounds']:

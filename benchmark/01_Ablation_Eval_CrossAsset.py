@@ -171,22 +171,7 @@ def main():
             print(f'    {arrow}  {m:6s}: {delta_pct:+.1f}%')
         print()
 
-    # Diagnosis from training log
-    print('  📊 TRAINING DIAGNOSTICS (epoch 10):')
-    diag = {
-        'tau (graph temp)' : '2.0005 → NOT learning (stuck at init)',
-        'Mask Sparsity'    : '0.00%  → graph dense (no pruning)',
-        'sigma2 range'     : '[0.05, 0.08] → near clamp floor (overconfident)',
-        'GradNorm'         : '~15–50 → high, consider gradient clipping',
-        'NLL trend'        : 'E1→E10: 0.45 → −0.30 → model learning ✅',
-        'MSE trend'        : 'E1→E10: 0.0035 → 0.0001 → converging ✅',
-    }
-    for k, v in diag.items():
-        print(f'    {k:20s}: {v}')
-    print()
-    print('  ⚠️  Key concern: tau not learning → Causal Sparsity NOT active.')
-    print('     -> Consider: lower beta_kl, higher beta_anneal_epochs,')
-    print('        or explicit tau learning rate (separate param group).')
+    # Note: Training diagnostics like tau and Sparsity should be checked in the train.py logs.
 
 
 if __name__ == '__main__':
