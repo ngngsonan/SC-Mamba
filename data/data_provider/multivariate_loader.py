@@ -78,15 +78,34 @@ class MultivariateRealDataset(Dataset):
             index='date', columns='Series', values='target', aggfunc='first'
         ).sort_index()
 
-        # Forward-fill / back-fill sparse gaps (e.g., non-trading days)
+        # ── Robust NaN handling for sparse datasets (e.g. cif_2016) ────────────
+        # Step 1: Drop series that are almost entirely absent (>50% NaN)
+        # These cannot be meaningfully filled and poison the scaler.
+        nan_frac = df_piv.isna().mean(axis=0)
+        df_piv = df_piv.loc[:, nan_frac <= 0.5]
+        
+        if df_piv.shape[1] == 0:
+            raise ValueError(
+                f"All series in the dataset were dropped due to excessive NaN values. "
+                f"Check the input PKL file."
+            )
+        
+        # Step 2: Forward-fill / back-fill remaining sparse gaps (e.g., non-trading days)
         df_piv = df_piv.ffill().bfill()
+        
+        # Step 3: Fill any remaining NaN with the column mean (handles leading NaNs in short series)
+        col_means = df_piv.mean(axis=0)
+        df_piv = df_piv.fillna(col_means)
+        
+        # Step 4: Final safety — replace any residual NaN with 0
+        df_piv = df_piv.fillna(0.0)
 
         # Optionally limit number of assets
         if N_assets is not None:
             if df_piv.shape[1] < N_assets:
                 raise ValueError(
                     f"Requested N_assets={N_assets} but dataset only has "
-                    f"{df_piv.shape[1]} series."
+                    f"{df_piv.shape[1]} series after dropping sparse columns."
                 )
             df_piv = df_piv.iloc[:, :N_assets]
 
