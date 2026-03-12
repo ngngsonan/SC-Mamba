@@ -200,7 +200,21 @@ class SpectralVariationalLayer(nn.Module):
         """
         B_N, P_L, D = Z_real.shape
         B = B_N // N_assets
-        
+
+        # ── Guard: bypass cross-asset graph when batch is smaller than N_assets ──
+        # This happens during univariate eval (validate_on_real_dataset) which passes
+        # B=1 series at a time even when model.N_assets > 1.
+        # Semantics: no cross-asset information available → identity pass, zero KL.
+        if B == 0 or B_N % N_assets != 0:
+            zero_kl = torch.tensor(0.0, device=Z_real.device)
+            stats = {
+                'mask_mean': 0.0, 'mask_min': 0.0, 'mask_max': 0.0,
+                'alpha': 1.0, 'tau': self.tau.item(),
+                'sparsity': 0.0, 'sigma2_collapse_frac': 0.0,
+                'fft_identity_diff': 0.0,
+            }
+            return Z_real, zero_kl, stats
+
         # Reshape to explicitly expose the Asset dimension (Dim 1)
         Z_spatial = Z_real.view(B, N_assets, P_L, D)
         
