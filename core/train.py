@@ -341,7 +341,9 @@ def train_model(config):
             if config['scaler'] == 'min_max':
                 max_scale = output['scale'][0].squeeze(-1)
                 min_scale = output['scale'][1].squeeze(-1)
-                scaled_target = (target - min_scale) / (max_scale - min_scale)
+                # Clamp the range to prevent zero-division for constant series (e.g. cif_2016)
+                scale_range = torch.clamp(max_scale - min_scale, min=1e-8)
+                scaled_target = (target - min_scale) / scale_range
             else:                
                 scaled_target = (target - output['scale'][0].squeeze(-1)) / output['scale'][1].squeeze(-1)
 
@@ -478,7 +480,9 @@ def train_model(config):
                 if config['scaler'] == 'min_max':
                     max_scale = output['scale'][0].squeeze(-1)
                     min_scale = output['scale'][1].squeeze(-1)
-                    scaled_target = (target - min_scale) / (max_scale - min_scale)
+                    # Clamp the range to prevent zero-division for constant series (e.g. cif_2016)
+                    scale_range = torch.clamp(max_scale - min_scale, min=1e-8)
+                    scaled_target = (target - min_scale) / scale_range
                 else:                
                     scaled_target = (target - output['scale'][0].squeeze(-1)) / output['scale'][1].squeeze(-1)
                 
