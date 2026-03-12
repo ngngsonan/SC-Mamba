@@ -432,8 +432,33 @@ def train_model(config):
         with torch.no_grad():
             val_batch_idx = 0
             for batch_id, batch in enumerate(test_dataloader):
-                data, target = {k: v.to(device) for k, v in batch.items() if k != 'target_values'}, batch['target_values'].to(device)
-                avoid_constant_inputs(data['history'], target)
+                # ── Batch adapter: mirrors the training loop ──────────────────
+                if _multivariate_train:
+                    N = config['num_assets']
+                    xs = batch['x'].to(device)          # (B, T_ctx, N)
+                    ys = batch['y'].to(device)          # (B, T_pred, N)
+                    B_sz, T_ctx, _ = xs.shape
+                    _, T_pred, _   = ys.shape
+                    history  = xs.permute(0, 2, 1).reshape(B_sz * N, T_ctx)
+                    ts_x     = batch['ts_x'].to(device)
+                    ts_x_rep = ts_x.unsqueeze(1).expand(-1, N, -1, -1).reshape(B_sz * N, T_ctx, -1)
+                    ts_y     = batch['ts_y'].to(device)
+                    ts_y_rep = ts_y.unsqueeze(1).expand(-1, N, -1, -1).reshape(B_sz * N, T_pred, -1)
+                    target   = ys.permute(0, 2, 1).reshape(B_sz * N, T_pred)
+                    data = {
+                        'history'         : history,
+                        'ts'              : ts_x_rep,
+                        'target_dates'    : ts_y_rep,
+                        'complete_target' : target.clone(),
+                        'task'            : torch.zeros(B_sz * N, T_pred, dtype=torch.int32, device=device),
+                    }
+                    avoid_constant_inputs(data['history'], target)
+                else:
+                    data, target = (
+                        {k: v.to(device) for k, v in batch.items() if k != 'target_values'},
+                        batch['target_values'].to(device),
+                    )
+                    avoid_constant_inputs(data['history'], target)
                 pred_len = target.size(1)
                 output = model(data, prediction_length=pred_len)
                 
