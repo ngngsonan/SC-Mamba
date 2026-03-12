@@ -1,0 +1,127 @@
+# ========================================================================
+# Config: SC-Mamba — Cross-Asset Causal Graph (Exchange Rate, N_assets=8)
+#
+# KEY DIFFERENCES from config.b_mamba2.yaml:
+#   - num_assets: 8          → Activates MultivariateRealDataset
+#   - real_train_datasets    → Points to exchange_rate PKL for training
+#   - prior_mix_frac: 0.3    → 30% synthetic GP + 70% real multivariate
+#   - batch_size: 8          → Smaller batch (each item = N=8 series)
+#   - beta_kl: 0.2           → Higher KL weight to learn Cross-Asset sparsity
+#
+# BACKWARD COMPAT:
+#   Setting num_assets: 1 and removing real_train_datasets falls back
+#   EXACTLY to the original GenerativeDataset pipeline with zero code change.
+# ========================================================================
+
+seed: 42
+debugging: false
+scaler: min_max
+sin_pos_enc: false
+sin_pos_const: false
+sub_day: false          # Exchange Rate is daily frequency → no sub-day features
+encoding_dropout: 0.1
+handle_constants_model: true
+
+# ── Cross-Asset Graph switch ──────────────────────────────────────────────
+num_assets: 8           # > 1 activates MultivariateRealDataset automatically
+real_train_datasets:    # Dataset used as the real training data source
+  - exchange_rate
+
+ssm_config:
+  bidirectional: false
+  enc_conv: true
+  init_dil_conv: true
+  enc_conv_kernel: 5
+  init_conv_kernel: 5
+  init_conv_max_dilation: 3
+  global_residual: false
+  in_proj_norm: false
+  initial_gelu_flag: true
+  linear_seq: 15
+  mamba2: true
+  norm: true
+  norm_type: layernorm
+  num_encoder_layers: 2
+  d_state: 128
+  residual: false
+  token_embed_len: 1024
+  block_expansion: 2
+  chunk_size: 256
+  headdim: 128
+
+# Training schedule
+training_rounds: 200    # Steps per epoch (real data is finite — fewer rounds needed)
+validation_rounds: 50
+num_epochs: 30
+batch_size: 8           # Reduced (B×N = 8×8 = 64 effective series per step)
+real_test_interval: 5
+
+# Learning rate
+lr_scheduler: cosine
+initial_lr: 0.00005
+learning_rate: 0.0000001
+t_max: -1
+
+# Context/prediction — match GluonTS test convention for exchange_rate
+context_len: 256
+min_seq_len: 60
+max_seq_len: 256
+pred_len_sample: false  # Fixed pred_len for consistent Cross-Asset window
+pred_len_min: 30
+pred_len: 30
+
+# Loss — higher beta_kl to train Causal Spectral Sparsity across N=8
+loss: nll
+beta_kl: 0.2
+beta_anneal_epochs: 10  # Ramp KL from 0 → 0.2 over first 10 epochs
+multipoint: true
+sample_multi_pred: 0.3  # Less random pred sampling — keep window stable
+diag_prints: true
+
+# Checkpoint
+version: v_multivariate_exchange_rate
+model_prefix: /content/drive/MyDrive/Colab\ Notebooks/SCMamba/sc_mamba_checkpoints
+wandb: false
+continue_training: false
+
+# Real validation — only exchange_rate (Cross-Asset eval)
+real_test_datasets:
+  - exchange_rate
+
+prior_config:
+  prior_mix_frac: 0.3   # 30% synthetic GP, 70% real multivariate windows
+  curriculum_learning: false
+  mixup_prob: 0.0
+  mixup_series: 4
+  damp_and_spike: false
+  damping_noise_ratio: 0.0
+  spike_noise_ratio: 0.0
+  spike_signal_ratio: 0.0
+  spike_batch_ratio: 0.0
+  fp_options:
+    linear_random_walk_frac: 0
+    seasonal_only: false
+    scale_noise: [0.6, 0.3]
+    trend_exp: false
+    harmonic_scale_ratio: 0.4
+    harmonic_rate: 0.75
+    trend_additional: true
+    transition_ratio: 0.0
+  gp_prior_config:
+    max_kernels: 6
+    likelihood_noise_level: 0.4
+    noise_level: random
+    use_original_gp: false
+    gaussians_periodic: true
+    peak_spike_ratio: 0.1
+    subfreq_ratio: 0.2
+    periods_per_freq: 0.5
+    gaussian_sampling_ratio: 0.2
+    kernel_periods: [4, 5, 7, 21, 24, 30, 60, 120]
+    max_period_ratio: 1.0
+    kernel_bank:
+      matern_kernel: 1.5
+      linear_kernel: 1
+      periodic_kernel: 5
+      polynomial_kernel: 0
+      spectral_mixture_kernel: 0

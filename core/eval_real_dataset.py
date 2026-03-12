@@ -325,6 +325,114 @@ def ensemble_predict(model, batch_x, batch_x_mark, batch_y_mark, pred_len, scale
     return output
 
 
+def multivariate_predict_aligned(
+    model,
+    dataset: str,
+    pred_len: int,
+    scaler: str,
+    device,
+    sub_day: bool = False,
+    context_len: int = None,
+) -> tuple:
+    """
+    Feed ALL N_assets series (time-aligned) into a single forward pass.
+    Only called when ``model.N_assets > 1`` and the dataset's asset count
+    matches ``model.N_assets``.
+
+    Returns
+    -------
+    batch_train_dfs, batch_pred_dfs : lists of DataFrames
+        Same schema as produced by the univariate path in evaluate_real_dataset,
+        so the calling code can concat and compute metrics identically.
+    """
+    import pickle
+    from data.data_provider.multivariate_loader import MultivariateRealDataset
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    data_dir  = os.path.join(base_dir, '..', 'data', 'real_val_datasets')
+    pkl_path  = os.path.join(data_dir, f'{dataset}_nopad_{MAX_LENGTH}.pkl')
+
+    N = model.N_assets
+    if context_len is None:
+        context_len = MAX_LENGTH
+
+    # Test split contains exactly 1 window (last pred_len timesteps as target)
+    test_ds = MultivariateRealDataset(
+        pkl_path, pred_len=pred_len, context_len=context_len,
+        split='test', N_assets=N, sub_day=sub_day,
+    )
+    # Also grab the train split to compute MASE denominator
+    train_ds = MultivariateRealDataset(
+        pkl_path, pred_len=pred_len, context_len=context_len,
+        split='train', N_assets=N, sub_day=sub_day,
+    )
+
+    model.eval()
+    batch_train_dfs = []
+    batch_pred_dfs  = []
+
+    with torch.no_grad():
+        for win_idx in range(len(test_ds)):
+            sample = test_ds[win_idx]   # single window
+            x    = sample['x'].to(device)    # (T_ctx, N)
+            y    = sample['y'].to(device)    # (T_pred, N)
+            ts_x = sample['ts_x'].to(device) # (T_ctx, ts_dim)
+            ts_y = sample['ts_y'].to(device) # (T_pred, ts_dim)
+
+            T_ctx  = x.shape[0]
+            T_pred = y.shape[0]
+
+            # Flatten to (N, T_ctx) for backbone
+            history  = x.permute(1, 0)                                     # (N, T_ctx)
+            ts_x_rep = ts_x.unsqueeze(0).expand(N, -1, -1)                # (N, T_ctx, ts_dim)
+            ts_y_rep = ts_y.unsqueeze(0).expand(N, -1, -1)                # (N, T_pred, ts_dim)
+
+            data = {
+                'history'      : history,
+                'ts'           : ts_x_rep,
+                'target_dates' : ts_y_rep,
+                'task'         : torch.zeros(N, T_pred, dtype=torch.int32, device=device),
+            }
+
+            output = model(data, prediction_length=T_pred)
+            scaled_mu, scaled_sigma2 = scale_data(output, scaler)
+
+            # mu/sigma2 shape: (N, T_pred)
+            mu_np    = scaled_mu.detach().cpu().numpy()       # (N, T_pred)
+            sig_np   = scaled_sigma2.detach().cpu().numpy()   # (N, T_pred)
+            y_np     = y.cpu().numpy()                        # (T_pred, N)
+
+            for asset_i in range(N):
+                asset_id = f"{dataset}_asset_{asset_i}"
+                # Training context for MASE denominator (last window available in train split)
+                if len(train_ds) > 0:
+                    train_sample = train_ds[len(train_ds) - 1]
+                    train_hist_i = train_sample['x'][:, asset_i].numpy()
+                else:
+                    train_hist_i = x[:, asset_i].cpu().numpy()
+
+                batch_train_dfs.append(pd.DataFrame({
+                    'id':     [asset_id] * len(train_hist_i),
+                    'target': train_hist_i,
+                }))
+
+                nll_vals = nll_eval(
+                    torch.tensor(mu_np[asset_i]),
+                    torch.tensor(sig_np[asset_i]),
+                    torch.tensor(y_np[:, asset_i]),
+                ).numpy()
+
+                batch_pred_dfs.append(pd.DataFrame({
+                    'id':       [asset_id] * T_pred,
+                    'pred':     mu_np[asset_i],
+                    'target':   y_np[:, asset_i],
+                    'variance': sig_np[asset_i],
+                    'nll':      nll_vals,
+                }))
+
+    return batch_train_dfs, batch_pred_dfs
+
+
 def evaluate_real_dataset(dataset: str, model, scaler, context_len, eval_pred_len, device, pred_style=None, sub_day=None):
     # Use absolute path for real_data_args.yaml (same dir as this script)
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -354,43 +462,55 @@ def evaluate_real_dataset(dataset: str, model, scaler, context_len, eval_pred_le
     seasonality = get_seasonality(gts_dataset.metadata.freq) if gts_dataset.metadata.freq != 'D' else 7
     print(seasonality)
 
-    batch_train_dfs = []
-    batch_pred_dfs = []
-    model.eval()
-    j = 0
-    print(f"pred_style: {pred_style}")
-    with torch.no_grad():
-        # for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
-        for i, batch in tqdm(enumerate(test_dataloader)):
-            ids = batch["id"]
-            batch_x = batch["x"].float()
-            batch_y = batch["y"][:, -eval_pred_len:, :].squeeze().float()
+    # ── Cross-Asset Multivariate path ───────────────────────────────────────
+    # Activated ONLY when model was trained with num_assets > 1 on this dataset.
+    # Full backward-compat: when model.N_assets == 1, skips to the original path.
+    _model_n = getattr(model, 'N_assets', 1)
+    _ds_n    = REAL_DATASET_ASSETS.get(dataset, 1)
+    _use_mv_eval = (_model_n > 1 and _model_n == _ds_n)
 
-            batch_x_mark = batch["ts_x"].float()
-            batch_y_mark = batch["ts_y"][:, -eval_pred_len:, :].float()
-            
-            if pred_style == 'multipoint':
-                mu_out, sigma2_out = multipoint_predict(model, batch_x, batch_x_mark, batch_y_mark, eval_pred_len, scaler, device)
-            else:
-                # We default to multipoint for SCMamba since it handles sequence directly
-                mu_out, sigma2_out = multipoint_predict(model, batch_x, batch_x_mark, batch_y_mark, eval_pred_len, scaler, device)
-            
-            # create dfs used to calculate the MASE such that the batch['x'] and pred are squeezed into 1 column and the ids are repeated 
-            # for batch['x'].shape[1] times and pred_len times respectively
-            batch_train_dfs.append(pd.DataFrame({
-                'id': ids.repeat_interleave(batch_x.size(1)).numpy(),
-                'target': batch_x.flatten().numpy()
-            }))
-            
-            nll_vals = nll_eval(mu_out, sigma2_out, batch_y.cpu()).flatten().numpy()
-            
-            batch_pred_dfs.append(pd.DataFrame({
-                'id': ids.repeat_interleave(eval_pred_len).numpy(),
-                'pred': mu_out.flatten().numpy(),
-                'target': batch_y.flatten().numpy(),
-                'variance': sigma2_out.flatten().numpy(),
-                'nll': nll_vals
-            }))
+    if _use_mv_eval:
+        print(f"[eval] Multivariate aligned eval: N_assets={_model_n}")
+        batch_train_dfs, batch_pred_dfs = multivariate_predict_aligned(
+            model=model, dataset=dataset, pred_len=pred_len,
+            scaler=scaler, device=device, sub_day=sub_day,
+            context_len=context_len,
+        )
+    else:
+        # ── Original univariate path (num_assets=1) ───────────────────────
+        batch_train_dfs = []
+        batch_pred_dfs = []
+        model.eval()
+        j = 0
+        print(f"pred_style: {pred_style}")
+        with torch.no_grad():
+            for i, batch in tqdm(enumerate(test_dataloader)):
+                ids = batch["id"]
+                batch_x = batch["x"].float()
+                batch_y = batch["y"][:, -eval_pred_len:, :].squeeze().float()
+
+                batch_x_mark = batch["ts_x"].float()
+                batch_y_mark = batch["ts_y"][:, -eval_pred_len:, :].float()
+
+                if pred_style == 'multipoint':
+                    mu_out, sigma2_out = multipoint_predict(model, batch_x, batch_x_mark, batch_y_mark, eval_pred_len, scaler, device)
+                else:
+                    mu_out, sigma2_out = multipoint_predict(model, batch_x, batch_x_mark, batch_y_mark, eval_pred_len, scaler, device)
+
+                batch_train_dfs.append(pd.DataFrame({
+                    'id': ids.repeat_interleave(batch_x.size(1)).numpy(),
+                    'target': batch_x.flatten().numpy()
+                }))
+
+                nll_vals = nll_eval(mu_out, sigma2_out, batch_y.cpu()).flatten().numpy()
+
+                batch_pred_dfs.append(pd.DataFrame({
+                    'id': ids.repeat_interleave(eval_pred_len).numpy(),
+                    'pred': mu_out.flatten().numpy(),
+                    'target': batch_y.flatten().numpy(),
+                    'variance': sigma2_out.flatten().numpy(),
+                    'nll': nll_vals
+                }))
 
     train_df = pd.concat(batch_train_dfs)
     pred_df = pd.concat(batch_pred_dfs)

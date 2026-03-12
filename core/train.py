@@ -36,6 +36,9 @@ import pprint
 from core.models import SCMamba_Forecaster  # Modified for SC-Mamba
 from create_train_test_batch import create_train_test_batch_dl
 from real_data_val_pipeline import validate_on_real_dataset
+# Multivariate loader — imported lazily inside the branch to avoid breaking num_assets=1
+# (the module itself is always importable, but only called when num_assets > 1)
+from data.data_provider.multivariate_loader import create_multivariate_real_dl
 from utils import SMAPEMetric, generate_model_save_name, avoid_constant_inputs
 from torch.optim.lr_scheduler import CosineAnnealingLR, CosineAnnealingWarmRestarts
 
@@ -175,11 +178,31 @@ def train_model(config):
         np.random.seed(new_seed % (2**32 - 1))
         random.seed(new_seed % (2**32 - 1))
     
-    train_dataloader, test_dataloader = create_train_test_batch_dl(config=config,
-                                                                   initial_epoch=initial_epoch,
-                                                                   cpus_available=available_cpus,
-                                                                   device=device,
-                                                                   multipoint=config['multipoint'])
+    # ── DataLoader selection ──────────────────────────────────────────────────
+    # num_assets = 1: original synthetic GenerativeDataset (unchanged behaviour)
+    # num_assets > 1: time-aligned MultivariateRealDataset (Cross-Asset Graph)
+    _use_multivariate = (
+        config['num_assets'] > 1
+        and bool(config.get('real_train_datasets'))
+    )
+    if _use_multivariate:
+        print(f"[Train] Multivariate mode: N_assets={config['num_assets']}, "
+              f"datasets={config['real_train_datasets']}")
+        train_dataloader, test_dataloader = create_multivariate_real_dl(
+            config=config,
+            device=device,
+            cpus_available=available_cpus,
+        )
+        _multivariate_train = True   # flag used in the batch loop below
+    else:
+        train_dataloader, test_dataloader = create_train_test_batch_dl(
+            config=config,
+            initial_epoch=initial_epoch,
+            cpus_available=available_cpus,
+            device=device,
+            multipoint=config['multipoint'],
+        )
+        _multivariate_train = False
 
     print(f'cuda device usage (after model load): {torch.cuda.memory_allocated() / 2**20}')
     config['model_param_size'] = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -232,10 +255,40 @@ def train_model(config):
         if config.get('diag_prints', False):
             print("Waiting for first batch from dataloader...", flush=True)
         for batch_id, batch in enumerate(train_dataloader):
-            # if config.get('diag_prints', False):
-            #     print(f"[{time.time() - epoch_start_time:.2f}s] Fetched batch {batch_id}", flush=True)
-            data, target = {k: v.to(device) for k, v in batch.items() if k != 'target_values'}, batch['target_values'].to(device)           
-            avoid_constant_inputs(data['history'], target)
+            if _multivariate_train:
+                # ── Multivariate batch adapter ───────────────────────────────
+                # batch['x'] : (B, T_ctx, N)   batch['y'] : (B, T_pred, N)
+                # batch['ts_x']: (B, T_ctx, ts_dim)  shared time features
+                N = config['num_assets']
+                xs = batch['x'].to(device)    # (B, T_ctx, N)
+                ys = batch['y'].to(device)    # (B, T_pred, N)
+                B_sz, T_ctx, _ = xs.shape
+                _, T_pred, _ = ys.shape
+
+                # Flatten: treat every asset as an independent sample
+                # history  : (B*N, T_ctx)
+                # ts       : (B*N, T_ctx, ts_dim)  — same timestamps repeated for all assets
+                # target   : (B*N, T_pred)   ← target values (unscaled original)
+                history  = xs.permute(0, 2, 1).reshape(B_sz * N, T_ctx)
+                ts_x     = batch['ts_x'].to(device)                     # (B, T_ctx, ts_dim)
+                ts_x_rep = ts_x.unsqueeze(1).expand(-1, N, -1, -1).reshape(B_sz * N, T_ctx, -1)
+                ts_y     = batch['ts_y'].to(device)                     # (B, T_pred, ts_dim)
+                ts_y_rep = ts_y.unsqueeze(1).expand(-1, N, -1, -1).reshape(B_sz * N, T_pred, -1)
+                target   = ys.permute(0, 2, 1).reshape(B_sz * N, T_pred)
+
+                data = {
+                    'history'       : history,
+                    'ts'            : ts_x_rep,
+                    'target_dates'  : ts_y_rep,
+                    'task'          : torch.zeros(B_sz * N, T_pred, dtype=torch.int32, device=device),
+                }
+                avoid_constant_inputs(data['history'], target)
+            else:
+                data, target = (
+                    {k: v.to(device) for k, v in batch.items() if k != 'target_values'},
+                    batch['target_values'].to(device),
+                )
+                avoid_constant_inputs(data['history'], target)
             
             pred_len = target.size(1)
             optimizer.zero_grad()
