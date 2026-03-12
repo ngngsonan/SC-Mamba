@@ -277,10 +277,11 @@ def train_model(config):
                 target   = ys.permute(0, 2, 1).reshape(B_sz * N, T_pred)
 
                 data = {
-                    'history'       : history,
-                    'ts'            : ts_x_rep,
-                    'target_dates'  : ts_y_rep,
-                    'task'          : torch.zeros(B_sz * N, T_pred, dtype=torch.int32, device=device),
+                    'history'         : history,
+                    'ts'              : ts_x_rep,
+                    'target_dates'    : ts_y_rep,
+                    'complete_target' : target.clone(),   # required by sample_multi_pred slicing path
+                    'task'            : torch.zeros(B_sz * N, T_pred, dtype=torch.int32, device=device),
                 }
                 avoid_constant_inputs(data['history'], target)
             else:
