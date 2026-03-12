@@ -325,7 +325,7 @@ def ensemble_predict(model, batch_x, batch_x_mark, batch_y_mark, pred_len, scale
     return output
 
 
-def evaluate_real_dataset(dataset: str, model, scaler, context_len, eval_pred_len, device, pred_style=None):
+def evaluate_real_dataset(dataset: str, model, scaler, context_len, eval_pred_len, device, pred_style=None, sub_day=None):
     # Use absolute path for real_data_args.yaml (same dir as this script)
     base_dir = os.path.dirname(os.path.abspath(__file__))
     config_file = os.path.join(base_dir, 'real_data_args.yaml')
@@ -345,8 +345,9 @@ def evaluate_real_dataset(dataset: str, model, scaler, context_len, eval_pred_le
     real_data_args['data'] = dataset
     real_data_args['pred_len'] = pred_len
     
-    # Extract sub_day from model_name dynamically
-    sub_day = "subday" in real_data_args.get("model_name", "")
+    # Extract sub_day from model_name dynamically or explicit parameter
+    if sub_day is None:
+        sub_day = "subday" in real_data_args.get("model_name", "")
     test_dataset, test_dataloader = data_provider(real_data_args, real_data_args['flag'], subday=sub_day)
 
     gts_dataset = get_dataset(real_data_args['data'], regenerate=False)
@@ -361,13 +362,12 @@ def evaluate_real_dataset(dataset: str, model, scaler, context_len, eval_pred_le
     with torch.no_grad():
         # for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
         for i, batch in tqdm(enumerate(test_dataloader)):
-            cl = min(context_len, batch['x'].shape[1])
             ids = batch["id"]
-            batch_x = batch["x"][:, -cl:, :].float()
-            batch_y = batch["y"][:, :eval_pred_len, :].squeeze().float()
+            batch_x = batch["x"].float()
+            batch_y = batch["y"][:, -eval_pred_len:, :].squeeze().float()
 
-            batch_x_mark = batch["ts_x"][:, -cl:, :].float()
-            batch_y_mark = batch["ts_y"][:, :eval_pred_len, :].float()
+            batch_x_mark = batch["ts_x"].float()
+            batch_y_mark = batch["ts_y"][:, -eval_pred_len:, :].float()
             
             if pred_style == 'multipoint':
                 mu_out, sigma2_out = multipoint_predict(model, batch_x, batch_x_mark, batch_y_mark, eval_pred_len, scaler, device)
@@ -537,9 +537,12 @@ def main_evaluator(pred_style=None, checkpoint_path=None, config_yaml_path=None,
         with open(config_yaml_path) as f:
             _tc = yaml.load(f, yaml.loader.SafeLoader)
         n_assets = _tc.get('num_assets', 1)
+        sub_day = _tc.get('sub_day', False)
     else:
         n_assets = checkpoint_data.get('num_assets', 1)
+        sub_day = False
     print(f"  🔧 N_assets (model) = {n_assets}")
+    print(f"  🔧 sub_day = {sub_day}")
 
     context_lens = [512]
 
@@ -560,7 +563,7 @@ def main_evaluator(pred_style=None, checkpoint_path=None, config_yaml_path=None,
                 for pl in pred_lens:
                     print(f'evaluating {dataset_name} for context length:{cl} and prediction length:{pl}')
                     start_time = time.time()
-                    out_dict, train_df, pred_df = evaluate_real_dataset(dataset_name, model, 'min_max', cl, pl, device, pred_style=pred_style)
+                    out_dict, train_df, pred_df = evaluate_real_dataset(dataset_name, model, 'min_max', cl, pl, device, pred_style=pred_style, sub_day=sub_day)
                     end_time = time.time()
                     res_dict[f'{cl}_{pl}'] = out_dict
                     print(f"Time taken by {pred_style}: {end_time - start_time}")

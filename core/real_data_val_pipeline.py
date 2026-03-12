@@ -136,6 +136,8 @@ def validate_on_real_dataset(dataset: str, model, device, scaler, subday=False):
 
     gts_dataset = get_dataset(real_data_args['data'], regenerate=False)
     seasonality = get_seasonality(gts_dataset.metadata.freq)
+    if gts_dataset.metadata.freq == 'D':
+        seasonality = 7
     print(seasonality)
 
     batch_train_dfs = []
@@ -266,7 +268,11 @@ def validate_on_real_dataset(dataset: str, model, device, scaler, subday=False):
     else:
         mean_crps = float('nan')
 
-    return (mase_loss['pred'].mean(), mae_loss['pred'].mean(),
+    # Drop INFs from MASE (e.g. constant series like some in car_parts)
+    mase_vals = mase_loss['pred'].replace([float('inf'), float('-inf')], float('nan'))
+    mase_mean = float(mase_vals.mean(skipna=True)) if mase_vals.notna().any() else float('nan')
+
+    return (mase_mean, mae_loss['pred'].mean(),
             rmse_loss['pred'].mean(), smape_loss['pred'].mean(),
             mean_nll, mean_crps)
 
