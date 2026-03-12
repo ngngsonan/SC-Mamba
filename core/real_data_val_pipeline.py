@@ -132,114 +132,100 @@ def validate_on_real_dataset(dataset: str, model, device, scaler, subday=False):
     pred_len = REAL_DATASETS[dataset]
     real_data_args['data'] = dataset
     real_data_args['pred_len'] = pred_len
-    test_dataset, test_dataloader = data_provider(real_data_args, real_data_args['flag'], subday=subday)
+    # ── Cross-Asset Multivariate path bypass ────────────────────────────────
+    from core.eval_real_dataset import multivariate_predict_aligned, REAL_DATASET_ASSETS
+    _model_n = getattr(model, 'N_assets', 1)
+    _ds_n    = REAL_DATASET_ASSETS.get(dataset, 1)
 
-    gts_dataset = get_dataset(real_data_args['data'], regenerate=False)
-    seasonality = get_seasonality(gts_dataset.metadata.freq)
-    if gts_dataset.metadata.freq == 'D':
-        seasonality = 7
-    print(seasonality)
+    if _model_n > 1 and _model_n == _ds_n:
+        print(f"  [eval_pipeline] Multivariate aligned eval: N_assets={_model_n} on {dataset}")
+        batch_train_dfs, batch_pred_dfs = multivariate_predict_aligned(
+            model=model, dataset=dataset, pred_len=pred_len,
+            scaler=scaler, device=device, sub_day=subday,
+            context_len=256,
+        )
+        gts_dataset = get_dataset(real_data_args['data'], regenerate=False)
+        seasonality = get_seasonality(gts_dataset.metadata.freq)
+        if gts_dataset.metadata.freq == 'D':
+            seasonality = 7
+    else:
+        test_dataset, test_dataloader = data_provider(real_data_args, real_data_args['flag'], subday=subday)
 
-    batch_train_dfs = []
-    batch_pred_dfs = []
-    model.eval()
-    j = 0
-    with torch.no_grad():
-        # for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
-        for i, batch in enumerate(test_dataloader):
-            ids = batch["id"]
-            batch_x = batch["x"]
-            batch_y = batch["y"]
+        gts_dataset = get_dataset(real_data_args['data'], regenerate=False)
+        seasonality = get_seasonality(gts_dataset.metadata.freq)
+        if gts_dataset.metadata.freq == 'D':
+            seasonality = 7
+        print(seasonality)
 
-            batch_x_mark = batch["ts_x"]
-            batch_y_mark = batch["ts_y"]
-            batch_x = batch_x.float().to(device)
-            batch_y = batch_y.float().to(device)
+        batch_train_dfs = []
+        batch_pred_dfs = []
+        model.eval()
+        j = 0
+        with torch.no_grad():
+            # for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
+            for i, batch in enumerate(test_dataloader):
+                ids = batch["id"]
+                batch_x = batch["x"]
+                batch_y = batch["y"]
 
-            batch_x_mark = batch_x_mark.float().to(device)
-            batch_y_mark = batch_y_mark.float().to(device)
+                batch_x_mark = batch["ts_x"]
+                batch_y_mark = batch["ts_y"]
+                batch_x = batch_x.float().to(device)
+                batch_y = batch_y.float().to(device)
 
-            #######################
+                batch_x_mark = batch_x_mark.float().to(device)
+                batch_y_mark = batch_y_mark.float().to(device)
 
-            # decoder input
-            # dec_inp = torch.ones_like(
-            #     batch_y[:, -pred_len:]).int()
-            # dec_inp = torch.cat(
-            #     [batch_y[:, :real_data_args['label_len']], dec_inp], dim=1).int().to(device)
-            
-            # x = {}
-            # x['ts'] = batch_x_mark
-            # x['history'] = batch_x.reshape(1,batch_x.size(1))
-            # outputs = []
-            # for pred_ind in range(0, pred_len):
-                    
-            #     x['target_dates'] = batch_y_mark[:, real_data_args['label_len'] + pred_ind].unsqueeze(1)
-            #     x['task'] = dec_inp[:, real_data_args['label_len'] + pred_ind]
-                
-            #     output = model(x)
-            #     if scaler == 'custom_robust':
-            #         outputs.append((output['result'] * output['scale'][1].squeeze(-1)) + output['scale'][0].squeeze(-1))
-            #     elif scaler == 'min_max':
-            #         outputs.append((output['result'] * (output['scale'][0].squeeze(-1) - output['scale'][1].squeeze(-1))) + output['scale'][1].squeeze(-1))
-            #     elif scaler == 'identity':
-            #         outputs.append(output['result'])
-                
-            #     if real_data_args['auto_regressive']:
-            #         x['history'] = torch.cat([x['history'], output['result']], dim=1)
-            #         x['ts'] = torch.cat([x['ts'], x['target_dates']], dim=1)
-
-            # f_dim = -1 if real_data_args['features'] == 'MS' else 0
-            # outputs = torch.stack(outputs, dim=1).detach().cpu().numpy()
-            if isinstance(model, SCMamba_Forecaster):
-                mu_out, sigma2_out = multipoint_predict(
-                    model, batch_x, batch_y, batch_x_mark, batch_y_mark, pred_len, scaler, device
-                )
-            else:
-                # Legacy deterministic path — no uncertainty output
-                if real_data_args['auto_regressive']:
-                    mu_out = auto_regressive_predict(
-                        model, batch_x, batch_y, batch_x_mark, batch_y_mark,
-                        pred_len, real_data_args, scaler, device
+                if isinstance(model, SCMamba_Forecaster):
+                    mu_out, sigma2_out = multipoint_predict(
+                        model, batch_x, batch_y, batch_x_mark, batch_y_mark, pred_len, scaler, device
                     )
                 else:
-                    mu_out = batch_predict(
-                        model, batch_x, batch_y, batch_x_mark, batch_y_mark,
-                        pred_len, real_data_args, scaler, device
-                    )
-                sigma2_out = None
+                    # Legacy deterministic path — no uncertainty output
+                    if real_data_args['auto_regressive']:
+                        mu_out = auto_regressive_predict(
+                            model, batch_x, batch_y, batch_x_mark, batch_y_mark,
+                            pred_len, real_data_args, scaler, device
+                        )
+                    else:
+                        mu_out = batch_predict(
+                            model, batch_x, batch_y, batch_x_mark, batch_y_mark,
+                            pred_len, real_data_args, scaler, device
+                        )
+                    sigma2_out = None
 
-            f_dim = -1 if real_data_args['features'] == 'MS' else 0
+                f_dim = -1 if real_data_args['features'] == 'MS' else 0
 
-            if len(batch_y.shape) == 3:
-                batch_y_np = batch_y[:, -pred_len:, f_dim:].detach().cpu().numpy()
-            else:
-                batch_y_np = batch_y[:, -pred_len:].detach().cpu().numpy()
+                if len(batch_y.shape) == 3:
+                    batch_y_np = batch_y[:, -pred_len:, f_dim:].detach().cpu().numpy()
+                else:
+                    batch_y_np = batch_y[:, -pred_len:].detach().cpu().numpy()
 
-            pred = mu_out.numpy().flatten()
-            true = batch_y_np.squeeze().flatten()
+                pred = mu_out.numpy().flatten()
+                true = batch_y_np.squeeze().flatten()
 
-            batch_train_dfs.append(pd.DataFrame({
-                'id': ids.repeat_interleave(batch_x.size(1)).numpy(),
-                'target': batch_x.flatten().detach().cpu().numpy()
-            }))
+                batch_train_dfs.append(pd.DataFrame({
+                    'id': ids.repeat_interleave(batch_x.size(1)).numpy(),
+                    'target': batch_x.flatten().detach().cpu().numpy()
+                }))
 
-            pred_row = {
-                'id': ids.repeat_interleave(pred_len).numpy(),
-                'pred': pred,
-                'target': true,
-            }
-            if sigma2_out is not None:
-                sigma2_flat = sigma2_out.numpy().flatten()
-                sigma2_flat = np.clip(sigma2_flat, 1e-6, None)
-                mu_t = torch.tensor(pred)
-                y_t = torch.tensor(true)
-                s2_t = torch.tensor(sigma2_flat)
-                nll_vals = (0.5 * torch.log(torch.tensor(2 * np.pi) * s2_t)
-                            + 0.5 * (y_t - mu_t) ** 2 / s2_t).numpy()
-                pred_row['variance'] = sigma2_flat
-                pred_row['nll'] = nll_vals
+                pred_row = {
+                    'id': ids.repeat_interleave(pred_len).numpy(),
+                    'pred': pred,
+                    'target': true,
+                }
+                if sigma2_out is not None:
+                    sigma2_flat = sigma2_out.numpy().flatten()
+                    sigma2_flat = np.clip(sigma2_flat, 1e-6, None)
+                    mu_t = torch.tensor(pred)
+                    y_t = torch.tensor(true)
+                    s2_t = torch.tensor(sigma2_flat)
+                    nll_vals = (0.5 * torch.log(torch.tensor(2 * np.pi) * s2_t)
+                                + 0.5 * (y_t - mu_t) ** 2 / s2_t).numpy()
+                    pred_row['variance'] = sigma2_flat
+                    pred_row['nll'] = nll_vals
 
-            batch_pred_dfs.append(pd.DataFrame(pred_row))
+                batch_pred_dfs.append(pd.DataFrame(pred_row))
 
     train_df = pd.concat(batch_train_dfs)
     pred_df = pd.concat(batch_pred_dfs)
