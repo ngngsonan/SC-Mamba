@@ -248,7 +248,7 @@ class SpectralVariationalLayer(nn.Module):
         Z_spatial_updated = torch.fft.irfft(H_updated_freq, n=N_assets, dim=1)
         
         # Flatten back matching Mamba4Cast baseline shapes
-        Z_updated = Z_spatial_updated.view(B * N_assets, P_L, D)
+        Z_updated = Z_spatial_updated.contiguous().view(B * N_assets, P_L, D)
         
         # Compute KL Divergence between Sampled F \sim N(mu, sigma) and Prior N(0, 1)
         kl_loss = -0.5 * torch.sum(1 + log_var_F - mu_F.pow(2) - log_var_F.exp())
