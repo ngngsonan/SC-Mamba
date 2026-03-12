@@ -60,7 +60,7 @@ REAL_DATASETS = {
     "m3_quarterly": 8,
     "tourism_monthly": 24,
     "tourism_quarterly": 8,
-    "nasdaq": 30, # SC-Mamba Special Addition 
+    # "nasdaq": 30, # SC-Mamba Special Addition 
 }
 
 def create_real_val_datasets(pad: bool=False):

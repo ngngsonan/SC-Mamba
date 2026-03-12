@@ -27,7 +27,7 @@ data_dict = {
     "tourism_monthly": Dataset_GluonTS,
     "tourism_quarterly": Dataset_GluonTS,
     "temperature_rain_without_missing": Dataset_GluonTS,
-    "nasdaq": Dataset_GluonTS, # SC-Mamba Special Addition
+    # "nasdaq": Dataset_GluonTS, # SC-Mamba Special Addition
 }
 
 
