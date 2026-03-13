@@ -137,7 +137,7 @@ def validate_on_real_dataset(dataset: str, model, device, scaler, subday=False):
     _model_n = getattr(model, 'N_assets', 1)
     _ds_n    = REAL_DATASET_ASSETS.get(dataset, 1)
 
-    if _model_n > 1 and _model_n == _ds_n:
+    if _model_n > 1 and _model_n <= _ds_n:
         print(f"  [eval_pipeline] Multivariate aligned eval: N_assets={_model_n} on {dataset}")
         batch_train_dfs, batch_pred_dfs = multivariate_predict_aligned(
             model=model, dataset=dataset, pred_len=pred_len,
