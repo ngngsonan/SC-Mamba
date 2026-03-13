@@ -149,16 +149,30 @@ class MultivariateRealDataset(Dataset):
 
         T_total = len(df_piv)
 
-        # ── Data split — target zones (no leakage) ───────────────────────────
-        # Only TARGETS must not overlap across splits.
-        # Context (inputs) may reach back into the previous split.
+        # ── Data split — target zones ───────────────────────────
+        # In ideal datasets, Targets must not overlap across splits.
+        # But for extremely short datasets (e.g. car_parts with length 51),
+        # strictly non-overlapping zones would result in 0 train windows.
         n_test = pred_len
-        n_val  = max(pred_len, 30)
+        
+        # Calculate ideal n_val (max 30, but at least pred_len)
+        min_train_required = context_len + pred_len
+        max_val_allowed = max(pred_len, T_total - n_test - min_train_required)
+        n_val = min(max(pred_len, 30), max_val_allowed)
+        
+        # Determine strict train_end boundary
+        ideal_train_end = T_total - n_test - n_val
+        
+        # CRITICAL FIX for sparse datasets (Bug #9):
+        # Guarantee at least 1 training window if mathematically possible.
+        # If T_total is too small, train_end will overlap with val/test zones.
+        train_end = max(ideal_train_end, min_train_required)
+        # Extreme fallback: if dataset is even smaller than 1 window, use all for train
+        if train_end > T_total:
+            train_end = T_total
 
         if split == 'train':
-            # Targets must stay within [0, T - n_test - n_val)
             # Windows slide: abs_start in [0, train_end - context_len - pred_len]
-            train_end = T_total - n_test - n_val
             self._start = 0
             self._end   = train_end
             n_steps = train_end
