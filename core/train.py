@@ -65,9 +65,6 @@ def nll_loss(mu, sigma2, target):
     return loss.mean()
 
 
-
-
-
 def adaptive_chunk_size(context_len: int) -> int:
     """
     Auto-compute the Mamba2 chunk_size from the actual context length.
@@ -232,12 +229,44 @@ def train_model(config):
     if _use_multivariate:
         print(f"[Train] Multivariate mode: N_assets={config['num_assets']}, "
               f"datasets={config['real_train_datasets']}")
+        _n_before_load = config['num_assets']
         train_dataloader, test_dataloader = create_multivariate_real_dl(
             config=config,
             device=device,
             cpus_available=available_cpus,
         )
         _multivariate_train = True   # flag used in the batch loop below
+
+        # ── N_assets reconciliation ──────────────────────────────────────────
+        # create_multivariate_real_dl() may have auto-clamped config['num_assets']
+        # (e.g. 72 → 61 for cif_2016 after sparse-drop). If the model was built
+        # with the original N (line 136), we must rebuild it with the actual N
+        # so that SpectralVariationalLayer dims match the batch tensors.
+        _n_after_load = config['num_assets']
+        if _n_after_load != _n_before_load:
+            print(
+                f"\n⚠️  N_assets mismatch: model built with N={_n_before_load} but "
+                f"DataLoader provides N={_n_after_load}.\n"
+                f"   Rebuilding model with correct N={_n_after_load}..."
+            )
+            del model  # free GPU memory before re-allocating
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            model = SCMamba_Forecaster(
+                N_assets=_n_after_load,
+                ssm_config={**base_model_configs, **ssm_cfg}
+            ).to(device)
+            # Re-initialise optimizer and scheduler with new model params
+            if config['lr_scheduler'] == "cosine":
+                optimizer = optim.AdamW(model.parameters(), lr=config["initial_lr"])
+                scheduler = CosineAnnealingLR(optimizer, T_max=config['t_max'], eta_min=config['learning_rate'])
+            elif config['lr_scheduler'] == "cosine_warm_restarts":
+                optimizer = optim.AdamW(model.parameters(), lr=config["initial_lr"])
+                scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=config['t_max'], eta_min=config['learning_rate'])
+            else:
+                optimizer = optim.AdamW(model.parameters(), lr=config['learning_rate'])
+            print(f"   ✅ Model rebuilt with N={_n_after_load}")
+
     else:
         train_dataloader, test_dataloader = create_train_test_batch_dl(
             config=config,

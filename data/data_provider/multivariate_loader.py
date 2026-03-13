@@ -102,11 +102,20 @@ class MultivariateRealDataset(Dataset):
 
         # Optionally limit number of assets
         if N_assets is not None:
-            if df_piv.shape[1] < N_assets:
-                raise ValueError(
-                    f"Requested N_assets={N_assets} but dataset only has "
-                    f"{df_piv.shape[1]} series after dropping sparse columns."
+            available = df_piv.shape[1]
+            if available < N_assets:
+                # Auto-clamp: sparse-drop removed series → use what's available.
+                # Hard-fail here would crash the entire benchmark loop for any
+                # dataset where >50% NaN filter reduces available series below
+                # the configured N (e.g. cif_2016 native=72 → actual=61).
+                import warnings
+                warnings.warn(
+                    f"[MultivariateRealDataset] Requested N_assets={N_assets} "
+                    f"but only {available} series remain after sparse-drop. "
+                    f"Auto-clamping to N_assets={available}.",
+                    RuntimeWarning, stacklevel=2
                 )
+                N_assets = available
             df_piv = df_piv.iloc[:, :N_assets]
 
         self.N_assets = df_piv.shape[1]
@@ -290,8 +299,18 @@ def create_multivariate_real_dl(
         N_assets=N_assets, sub_day=sub_day,
     )
 
+    # ── Sync effective N back into config (may have been auto-clamped by sparse-drop) ──
+    # This allows train.py to detect a config vs actual N mismatch and rebuild the model.
+    actual_N = train_ds.N_assets
+    if actual_N != N_assets:
+        print(
+            f"[create_multivariate_real_dl] N auto-clamped: {N_assets} → {actual_N} "
+            f"(sparse series dropped from {dataset_name}). Updating config['num_assets']."
+        )
+        config['num_assets'] = actual_N
+
     print(
-        f"[MultivariateRealDataset] {dataset_name} | N_assets={N_assets} | "
+        f"[MultivariateRealDataset] {dataset_name} | N_assets={actual_N} | "
         f"train_windows={len(train_ds)} | val_windows={len(val_ds)}"
     )
 
