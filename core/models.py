@@ -121,13 +121,13 @@ class SC_SSMModelBackbone(nn.Module):
         # Pad sequence so Mamba2's SSD Triton kernel receives seq_len % chunk_size == 0.
         #
         # CRITICAL: nchunks = seq_len / chunk_size must be >= 2.
-        # When nchunks=1, the _chunk_state_fwd_kernel autotuner hits an LLVM
-        # compiler bug (IndexError: map::at) for certain BLOCK_SIZE_M tile configs.
-        # Inputs can be as short as min_seq_len(30) + pred_len_min(10) = 40 tokens,
-        # which when padded to 1 × chunk_size = 256 gives nchunks=1 — triggering the crash.
-        # Guarantee: min padded length = 2 × chunk_size → nchunks ≥ 2.
+        # ── OOM Hotfix (March 2026) ──
+        # Mamba2 simply requires seq_len % chunk_size == 0 and seq_len >= chunk_size.
+        # Short series (30 to 60 steps) were previously padded to 512 (2 * chunk_size)
+        # causing 15GB+ OOM on full multivariate datasets like cif_2016 (N=72).
+        # We now allow padding to 256 (1 * chunk_size), halving the GPU memory footprint.
         L = x.shape[1]
-        min_padded = 2 * self.chunk_size                        # nchunks ≥ 2
+        min_padded = self.chunk_size
         target_len = max(min_padded, math.ceil(L / self.chunk_size) * self.chunk_size)
         pad = target_len - L
         if pad > 0:
