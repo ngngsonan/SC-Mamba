@@ -515,11 +515,31 @@ def evaluate_real_dataset(dataset: str, model, scaler, context_len, eval_pred_le
     train_df = pd.concat(batch_train_dfs)
     pred_df = pd.concat(batch_pred_dfs)
 
-    mase_loss = mase(pred_df, ['pred'], seasonality, train_df, 'id', 'target')
-    mae_loss = mae(pred_df, ['pred'], 'id', 'target')
-    rmse_loss = rmse(pred_df, ['pred'], 'id', 'target')
-    smape_loss = smape(pred_df, ['pred'], 'id', 'target')
-    mean_nll = pred_df['nll'].mean()
+    # CRITICAL FIX for sparse datasets (cif_2016):
+    # multivariate_loader pads NaN with 0.0/mean to prevent model explosion.
+    # However, evaluating MASE/MAE against an artificial 0.0 target produces massive false errors.
+    # We must identify which targets were originally missing. In this simplified pipeline,
+    # we filter out exact 0.0 targets (which is the fallback fill value in loader) to
+    # prevent dividing by zero or penalizing valid forecasts against blank labels.
+    if dataset == 'cif_2016':
+        train_df.loc[train_df['target'] == 0.0, 'target'] = np.nan
+        pred_df.loc[pred_df['target'] == 0.0, 'target'] = np.nan
+
+    # Drop NaNs BEFORE passing to metrics so they don't corrupt the aggregation
+    pred_df_clean = pred_df.dropna(subset=['target'])
+    train_df_clean = train_df.dropna(subset=['target'])
+
+    # If completely empty after drop (edge case for tiny series), fallback to original
+    if len(pred_df_clean) == 0:
+        pred_df_clean = pred_df
+    if len(train_df_clean) == 0:
+        train_df_clean = train_df
+
+    mase_loss = mase(pred_df_clean, ['pred'], seasonality, train_df_clean, 'id', 'target')
+    mae_loss = mae(pred_df_clean, ['pred'], 'id', 'target')
+    rmse_loss = rmse(pred_df_clean, ['pred'], 'id', 'target')
+    smape_loss = smape(pred_df_clean, ['pred'], 'id', 'target')
+    mean_nll = pred_df_clean['nll'].mean()
 
     # MASE: replace inf/-inf with NaN (caused by zero-variance training windows in
     # sparse datasets like car_parts, covid_deaths). Use skipna to get a valid mean.
@@ -531,15 +551,15 @@ def evaluate_real_dataset(dataset: str, model, scaler, context_len, eval_pred_le
 
     # CRPS (Continuous Ranked Probability Score) — closed-form Gaussian CRPS.
     # Primary probabilistic metric distinguishing SC-Mamba from deterministic baselines.
-    mu_np = pred_df['pred'].values
-    sigma_np = np.sqrt(np.clip(pred_df['variance'].values, 1e-6, None))
-    y_np = pred_df['target'].values
+    mu_np = pred_df_clean['pred'].values
+    sigma_np = np.sqrt(np.clip(pred_df_clean['variance'].values, 1e-6, None))
+    y_np = pred_df_clean['target'].values
     crps_vals = crps_gaussian(mu_np, sigma_np, y_np)
     mean_crps = float(crps_vals.mean())
 
     # Scaled CRPS: normalize by data std for cross-dataset comparison.
     # Raw CRPS is in original unit scale (e.g. 4M for CIF which has large values).
-    data_std = float(train_df['target'].std()) if train_df['target'].std() > 0 else 1.0
+    data_std = float(train_df_clean['target'].std()) if train_df_clean['target'].std() > 0 else 1.0
     mean_crps_scaled = mean_crps / data_std
 
     out_dict = {
