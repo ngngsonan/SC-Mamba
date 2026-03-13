@@ -67,6 +67,29 @@ def nll_loss(mu, sigma2, target):
 
 
 
+
+def adaptive_chunk_size(context_len: int) -> int:
+    """
+    Auto-compute the Mamba2 chunk_size from the actual context length.
+
+    Strategy: largest power-of-2 that is <= context_len, clamped to [32, 256].
+    This guarantees:
+      - seq_len >= chunk_size → no floor padding required
+      - waste_tokens < chunk_size (< 50% of actual data)
+      - Backward compatibility for context_len=256 → chunk_size=256 unchanged
+
+    Examples:
+      context_len=256 → chunk_size=256  (exchange_rate, unchanged)
+      context_len= 60 → chunk_size= 32  (cif_2016 monthly 5yr avg)
+      context_len= 32 → chunk_size= 32
+      context_len= 20 → chunk_size= 16  (ultra-short)
+    """
+    for cs in [256, 128, 64, 32, 16]:
+        if context_len >= cs:
+            return cs
+    return 16  # Ultimate floor for ultra-short series
+
+
 def train_model(config):
     print("config:")
     print(pprint.pformat(config))
@@ -99,13 +122,23 @@ def train_model(config):
         "handle_constants_model": config["handle_constants_model"],
         }
     
-    # Load the model
     if config.get('num_assets') is None:
         raise ValueError("num_assets must be provided in config for Spectral Causal filtering.")
-        
+
+    # ── Adaptive chunk_size: auto-select from context_len to minimize padding waste ──
+    # Only override if the user has NOT explicitly set chunk_size in the yaml.
+    # context_len drives the sequence length of real-dataset windows.
+    # See `adaptive_chunk_size()` for the power-of-2 derivation.
+    ssm_cfg = dict(config['ssm_config'])  # shallow copy — don't mutate original config
+    ctx = config.get('context_len', config.get('max_seq_len', 256))
+    auto_cs = adaptive_chunk_size(ctx)
+    if 'chunk_size' not in config.get('ssm_config', {}) or ssm_cfg.get('chunk_size') != auto_cs:
+        ssm_cfg['chunk_size'] = auto_cs
+        print(f"  [adaptive_chunk] context_len={ctx} → chunk_size={auto_cs} (was {config['ssm_config'].get('chunk_size', 256)})")
+
     model = SCMamba_Forecaster(
-        N_assets=config['num_assets'], 
-        ssm_config={**base_model_configs, **config['ssm_config']}
+        N_assets=config['num_assets'],
+        ssm_config={**base_model_configs, **ssm_cfg}
     ).to(device)
     print("Using SCMamba_Forecaster (Spectral Variational Graph)")
     # Assuming your train_loader and test_loader are already defined

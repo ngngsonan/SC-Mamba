@@ -118,18 +118,17 @@ class SC_SSMModelBackbone(nn.Module):
             x = self.in_proj_norm(x) 
             x = self.init_gelu(x)
             
-        # Pad sequence so Mamba2's SSD Triton kernel receives seq_len % chunk_size == 0.
-        #
-        # CRITICAL: nchunks = seq_len / chunk_size must be >= 2.
-        # ── OOM Hotfix (March 2026) ──
-        # Mamba2 simply requires seq_len % chunk_size == 0 and seq_len >= chunk_size.
-        # Short series (30 to 60 steps) were previously padded to 512 (2 * chunk_size)
-        # causing 15GB+ OOM on full multivariate datasets like cif_2016 (N=72).
-        # We now allow padding to 256 (1 * chunk_size), halving the GPU memory footprint.
+        # ─── Adaptive Sequence Padding ─────────────────────────────────────────
+        # Pad ONLY to the nearest multiple of chunk_size.
+        # Mamba2 SSD kernel requires: seq_len % chunk_size == 0.
+        # NO minimum floor — chunk_size itself is chosen adaptively at init time
+        # (see `adaptive_chunk_size()` in train.py) to ensure seq_len >= chunk_size.
+        # This is the pure, memory-optimal formulation:
+        #   waste_tokens = (-seq_len) % chunk_size  (never exceeds chunk_size - 1)
         L = x.shape[1]
-        min_padded = self.chunk_size
-        target_len = max(min_padded, math.ceil(L / self.chunk_size) * self.chunk_size)
-        pad = target_len - L
+        remainder = L % self.chunk_size
+        pad = (self.chunk_size - remainder) % self.chunk_size  # 0 when already aligned
+        target_len = L + pad
         if pad > 0:
             x = F.pad(x, (0, 0, 0, pad))  # zero-pad seq_len dim only
 
