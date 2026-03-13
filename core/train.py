@@ -122,6 +122,46 @@ def train_model(config):
     if config.get('num_assets') is None:
         raise ValueError("num_assets must be provided in config for Spectral Causal filtering.")
 
+    # ── Preflight N-resolution for multivariate mode ──────────────────────────
+    # For multivariate datasets, the actual number of available series may be
+    # less than config['num_assets'] after the >50% NaN sparse-drop filter.
+    # We must know the true N BEFORE building the model, so that:
+    #   (a) model is built with the correct N from the start
+    #   (b) checkpoint loading (which follows model init) uses matching shapes
+    # This avoids the antipattern: build→load_checkpoint→detect mismatch→rebuild.
+    _is_multivariate_mode = (
+        config.get('num_assets', 1) > 1
+        and bool(config.get('real_train_datasets'))
+    )
+    if _is_multivariate_mode:
+        _preflight_ds_name  = config['real_train_datasets'][0]
+        _preflight_data_dir = os.path.join(
+            os.path.abspath(os.path.join(os.path.dirname(__file__), '..')),
+            'data', 'real_val_datasets'
+        )
+        _padded = 'pad' if config.get('pad', False) else 'nopad'
+        _pkl    = os.path.join(_preflight_data_dir, f'{_preflight_ds_name}_{_padded}_512.pkl')
+        if os.path.exists(_pkl):
+            from data.data_provider.multivariate_loader import MultivariateRealDataset as _MRD
+            _probe_ds = _MRD(
+                _pkl,
+                pred_len=config['pred_len'],
+                context_len=config['context_len'],
+                split='train',
+                N_assets=config['num_assets'],
+                sub_day=config.get('sub_day', False),
+            )
+            _actual_N = _probe_ds.N_assets
+            del _probe_ds  # free memory; re-created properly in create_multivariate_real_dl
+            if _actual_N != config['num_assets']:
+                print(
+                    f"[Preflight] N_assets adjusted: {config['num_assets']} → {_actual_N} "
+                    f"(sparse-drop on {_preflight_ds_name}). Model will be built with N={_actual_N}."
+                )
+                config['num_assets'] = _actual_N
+        else:
+            print(f"[Preflight] PKL not found yet ({_pkl}) — will resolve N after DataLoader creation.")
+
     # ── Adaptive chunk_size: auto-select from context_len to minimize padding waste ──
     # Only override if the user has NOT explicitly set chunk_size in the yaml.
     # context_len drives the sequence length of real-dataset windows.
@@ -229,34 +269,30 @@ def train_model(config):
     if _use_multivariate:
         print(f"[Train] Multivariate mode: N_assets={config['num_assets']}, "
               f"datasets={config['real_train_datasets']}")
-        _n_before_load = config['num_assets']
         train_dataloader, test_dataloader = create_multivariate_real_dl(
             config=config,
             device=device,
             cpus_available=available_cpus,
         )
         _multivariate_train = True   # flag used in the batch loop below
-
-        # ── N_assets reconciliation ──────────────────────────────────────────
-        # create_multivariate_real_dl() may have auto-clamped config['num_assets']
-        # (e.g. 72 → 61 for cif_2016 after sparse-drop). If the model was built
-        # with the original N (line 136), we must rebuild it with the actual N
-        # so that SpectralVariationalLayer dims match the batch tensors.
-        _n_after_load = config['num_assets']
-        if _n_after_load != _n_before_load:
+        # create_multivariate_real_dl() updates config['num_assets'] in-place if N was clamped.
+        # Since preflight already resolved N before model init, this should be a no-op.
+        # If PKL was missing at preflight (offline case), the clamp happens here and a mismatch
+        # may still occur — detected and warned below.
+        _actual_N_post = config['num_assets']
+        if _actual_N_post != model.N_assets:
             print(
-                f"\n⚠️  N_assets mismatch: model built with N={_n_before_load} but "
-                f"DataLoader provides N={_n_after_load}.\n"
-                f"   Rebuilding model with correct N={_n_after_load}..."
+                f"\n⚠️  N_assets mismatch after DataLoader (model.N_assets={model.N_assets}, "
+                f"actual={_actual_N_post}). Preflight could not resolve N (PKL was missing). "
+                f"Rebuilding model with correct N={_actual_N_post}..."
             )
-            del model  # free GPU memory before re-allocating
+            del model
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             model = SCMamba_Forecaster(
-                N_assets=_n_after_load,
+                N_assets=_actual_N_post,
                 ssm_config={**base_model_configs, **ssm_cfg}
             ).to(device)
-            # Re-initialise optimizer and scheduler with new model params
             if config['lr_scheduler'] == "cosine":
                 optimizer = optim.AdamW(model.parameters(), lr=config["initial_lr"])
                 scheduler = CosineAnnealingLR(optimizer, T_max=config['t_max'], eta_min=config['learning_rate'])
@@ -265,7 +301,7 @@ def train_model(config):
                 scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=config['t_max'], eta_min=config['learning_rate'])
             else:
                 optimizer = optim.AdamW(model.parameters(), lr=config['learning_rate'])
-            print(f"   ✅ Model rebuilt with N={_n_after_load}")
+            print(f"   ✅ Model rebuilt with N={_actual_N_post} (checkpoint load will be skipped this run)")
 
     else:
         train_dataloader, test_dataloader = create_train_test_batch_dl(
