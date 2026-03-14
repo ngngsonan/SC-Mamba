@@ -1,0 +1,104 @@
+ Config: ctx=256 | N=8 | seeds=[7270, 860, 5390, 5191, 5734]
+
+────────────────────────────────────────────────────────────
+  📡  nn5_daily_without_missing  (pred_len=56)
+  Unique series: 111
+  Valid series: 111
+  MASE=2.7402±0.1721  CRPS=12.5053    -58.1%
+
+────────────────────────────────────────────────────────────
+  📡  nn5_weekly  (pred_len=8)
+  Unique series: 111
+  ⏭️  Skip: only 0/111 series ≥ 264 steps (ctx=256 at W-SUN frequency = 256 days)
+
+────────────────────────────────────────────────────────────
+  📡  covid_deaths  (pred_len=30)
+  Unique series: 266
+  ⏭️  Skip: only 0/266 series ≥ 286 steps (ctx=256 at D frequency = 256 days)
+
+────────────────────────────────────────────────────────────
+  📡  weather  (pred_len=30)
+  Unique series: 300
+  Valid series: 300
+  MASE=0.7084±0.1582  CRPS=9.2874  ✅ +48.9%
+
+────────────────────────────────────────────────────────────
+  📡  hospital  (pred_len=12)
+  Unique series: 300
+  ⏭️  Skip: only 0/300 series ≥ 268 steps (ctx=256 at M frequency = 7680 days)
+
+────────────────────────────────────────────────────────────
+  📡  fred_md  (pred_len=12)
+  Unique series: 107
+  Valid series: 107
+  MASE=87.7057±127.1365  CRPS=19835.1405    -2083.6%
+
+────────────────────────────────────────────────────────────
+  📡  car_parts_without_missing  (pred_len=12)
+  Unique series: 300
+  ⏭️  Skip: only 0/300 series ≥ 268 steps (ctx=256 at M frequency = 7680 days)
+
+────────────────────────────────────────────────────────────
+  📡  traffic  (pred_len=24)
+  Unique series: 300
+  Valid series: 300
+  MASE=2.7756±0.2663  CRPS=0.0468    -3.1%
+
+────────────────────────────────────────────────────────────
+  📡  ercot  (pred_len=24)
+  Unique series: 8
+  Valid series: 8
+  MASE=12.2611±0.0000  CRPS=1533.1546    -152.8%
+
+────────────────────────────────────────────────────────────
+  📡  m1_monthly  (pred_len=18)
+  Unique series: 300
+  ⏭️  Skip: only 0/300 series ≥ 274 steps (ctx=256 at M frequency = 7680 days)
+
+────────────────────────────────────────────────────────────
+  📡  m1_quarterly  (pred_len=8)
+  Unique series: 203
+  ⏭️  Skip: only 0/203 series ≥ 264 steps (ctx=256 at Q-DEC frequency = 256 days)
+
+────────────────────────────────────────────────────────────
+  📡  cif_2016  (pred_len=12)
+  Unique series: 72
+  ⏭️  Skip: only 0/72 series ≥ 268 steps (ctx=256 at M frequency = 7680 days)
+
+────────────────────────────────────────────────────────────
+  📡  exchange_rate  (pred_len=30)
+  Unique series: 8
+  Valid series: 8
+  MASE=11.7215±0.0000  CRPS=0.0221    -323.4%
+
+────────────────────────────────────────────────────────────
+  📡  tourism_monthly  (pred_len=24)
+  Unique series: 300
+  Valid series: 210
+  MASE=7.6630±2.4345  CRPS=5041.3780    -101.6%
+
+────────────────────────────────────────────────────────────
+  📡  tourism_quarterly  (pred_len=8)
+  Unique series: 300
+  ⏭️  Skip: only 0/300 series ≥ 264 steps (ctx=256 at Q-DEC frequency = 256 days)
+
+==================================================================================
+  ZERO-SHOT FOUNDATION MODEL BENCHMARK  (K=5 seeds/dataset)
+  Source : exchange_rate (Forex, N=8, ctx=256)
+  ⚠️  NOTE: MASE denominator = lag-1 naive MAE from training history (NOT seasonality-aware)
+     In-domain baselines use utilsforecast.mase() with seasonality — values differ by design.
+==================================================================================
+Dataset                          MASE (mean±CI)         CRPS         vs Baseline    
+──────────────────────────────────────────────────────────────────────────────────
+nn5_daily_without_missing        2.7402±0.1721       12.5053        -58.1%
+weather                          0.7084±0.1582       9.2874       ✅ +48.9%
+fred_md                          87.7057±127.1365       19835.1405     -2083.6%
+traffic                          2.7756±0.2663       0.0468         -3.1%
+ercot                            12.2611±0.0000       1533.1546      -152.8%
+exchange_rate                    11.7215±0.0000       0.0221         -323.4%
+tourism_monthly                  7.6630±2.4345       5041.3780      -101.6%
+──────────────────────────────────────────────────────────────────────────────────
+BEAT BASELINE : 1/7  |  COVERAGE: 7/15  |  SKIPPED: 8
+==================================================================================
+
+✅ 02_test_zeroshot_multi.py v4 complete.

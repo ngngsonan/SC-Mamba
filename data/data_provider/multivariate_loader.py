@@ -64,6 +64,7 @@ class MultivariateRealDataset(Dataset):
         split: str = 'train',
         N_assets: int | None = None,
         sub_day: bool = False,
+        col_indices: list | None = None,
     ):
         assert split in ('train', 'val', 'test'), f"Invalid split: {split}"
 
@@ -100,14 +101,24 @@ class MultivariateRealDataset(Dataset):
         # Step 4: Final safety — replace any residual NaN with 0
         df_piv = df_piv.fillna(0.0)
 
-        # Optionally limit number of assets
-        if N_assets is not None:
+        # ── Column selection ──────────────────────────────────────────────────
+        # Priority: col_indices (explicit list) > N_assets (first-N slice)
+        if col_indices is not None:
+            # Zero-shot sub-sampling: select specific columns by index
+            available = df_piv.shape[1]
+            valid_idx = [i for i in col_indices if i < available]
+            if len(valid_idx) < len(col_indices):
+                import warnings
+                warnings.warn(
+                    f"[MultivariateRealDataset] {len(col_indices) - len(valid_idx)} "
+                    f"col_indices out of range (available={available}). Using {len(valid_idx)}.",
+                    RuntimeWarning, stacklevel=2,
+                )
+            df_piv = df_piv.iloc[:, valid_idx]
+        elif N_assets is not None:
+            # Existing behaviour: take first N columns
             available = df_piv.shape[1]
             if available < N_assets:
-                # Auto-clamp: sparse-drop removed series → use what's available.
-                # Hard-fail here would crash the entire benchmark loop for any
-                # dataset where >50% NaN filter reduces available series below
-                # the configured N (e.g. cif_2016 native=72 → actual=61).
                 import warnings
                 warnings.warn(
                     f"[MultivariateRealDataset] Requested N_assets={N_assets} "
