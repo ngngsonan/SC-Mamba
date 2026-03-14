@@ -1,104 +1,150 @@
- Config: ctx=256 | N=8 | seeds=[7270, 860, 5390, 5191, 5734]
+
+============================================================
+  SC-Mamba Zero-Shot Foundation Model Benchmark (v6 Canonical)
+  Context lock: ctx=256 | N=8
+  Seeds: [7270, 860, 5390, 5191, 5734]
+============================================================
+  ✅ model.N_assets=8 matches N_ASSETS=8
 
 ────────────────────────────────────────────────────────────
   📡  nn5_daily_without_missing  (pred_len=56)
-  Unique series: 111
-  Valid series: 111
-  MASE=2.7402±0.1721  CRPS=12.5053    -58.1%
-
-────────────────────────────────────────────────────────────
-  📡  nn5_weekly  (pred_len=8)
-  Unique series: 111
-  ⏭️  Skip: only 0/111 series ≥ 264 steps (ctx=256 at W-SUN frequency = 256 days)
-
-────────────────────────────────────────────────────────────
-  📡  covid_deaths  (pred_len=30)
-  Unique series: 266
-  ⏭️  Skip: only 0/266 series ≥ 286 steps (ctx=256 at D frequency = 256 days)
+  N_total=111 | test_windows=1
+Download nn5_daily_dataset_without_missing_values.zip:: 288kB [00:00, 777kB/s]
+creating json files: 100%|██████████| 111/111 [00:00<00:00, 105023.18it/s]
+  [DIAG:pad] seq_len=312 → padded=512 (pad=200, waste=39.1%), chunk_size=256
+  [DIAG:spectral] N_assets=8, freq_bins=5, mask=[0.1197, 0.4543], alpha=1.00, tau=2.0007, KL=0.023826, fft_identity_diff=0.00e+00
+    Seed  7270 | cols=[np.int64(5), np.int64(28), np.int64(39), np.int64(42), np.int64(78), np.int64(85), np.int64(95), np.int64(109)] | MASE=4.3088 | CRPS=13.436657
+  [DIAG:pad] seq_len=312 → padded=512 (pad=200, waste=39.1%), chunk_size=256
+  [DIAG:spectral] N_assets=8, freq_bins=5, mask=[0.1197, 0.4756], alpha=1.00, tau=2.0007, KL=0.024902, fft_identity_diff=0.00e+00
+    Seed   860 | cols=[np.int64(40), np.int64(52), np.int64(78), np.int64(88), np.int64(93), np.int64(97), np.int64(98), np.int64(103)] | MASE=4.1286 | CRPS=11.965707
+  [DIAG:pad] seq_len=312 → padded=512 (pad=200, waste=39.1%), chunk_size=256
+  [DIAG:spectral] N_assets=8, freq_bins=5, mask=[0.1197, 0.4531], alpha=1.00, tau=2.0007, KL=0.023749, fft_identity_diff=0.00e+00
+    Seed  5390 | cols=[np.int64(0), np.int64(3), np.int64(4), np.int64(13), np.int64(32), np.int64(48), np.int64(53), np.int64(80)] | MASE=4.7442 | CRPS=14.581073
+    Seed  5191 | cols=[np.int64(24), np.int64(64), np.int64(72), np.int64(74), np.int64(76), np.int64(85), np.int64(94), np.int64(102)] | MASE=3.8696 | CRPS=12.315259
+    Seed  5734 | cols=[np.int64(19), np.int64(21), np.int64(26), np.int64(40), np.int64(51), np.int64(70), np.int64(83), np.int64(88)] | MASE=4.4529 | CRPS=10.962034
+  MASE=4.3008±0.4096  CRPS=12.652146       -275.9%
 
 ────────────────────────────────────────────────────────────
   📡  weather  (pred_len=30)
-  Unique series: 300
-  Valid series: 300
-  MASE=0.7084±0.1582  CRPS=9.2874  ✅ +48.9%
+  ❌ Failed to load: All series in the dataset were dropped due to excessive NaN values. Check the input PKL file.
 
 ────────────────────────────────────────────────────────────
   📡  hospital  (pred_len=12)
-  Unique series: 300
-  ⏭️  Skip: only 0/300 series ≥ 268 steps (ctx=256 at M frequency = 7680 days)
+  N_total=767 | test_windows=1
+Download hospital_dataset.zip:: 80.0kB [00:00, 291kB/s]
+creating json files: 100%|██████████| 767/767 [00:00<00:00, 195754.60it/s]
+    Seed  7270 | cols=[np.int64(38), np.int64(40), np.int64(201), np.int64(280), np.int64(306), np.int64(545), np.int64(628), np.int64(668)] | MASE=11.0571 | CRPS=64.647586
+    Seed   860 | cols=[np.int64(283), np.int64(373), np.int64(545), np.int64(642), np.int64(681), np.int64(684), np.int64(703), np.int64(729)] | MASE=11.6230 | CRPS=288.438727
+    Seed  5390 | cols=[np.int64(0), np.int64(24), np.int64(31), np.int64(96), np.int64(234), np.int64(334), np.int64(374), np.int64(570)] | MASE=8.6996 | CRPS=76.618363
+    Seed  5191 | cols=[np.int64(171), np.int64(455), np.int64(505), np.int64(529), np.int64(556), np.int64(618), np.int64(685), np.int64(724)] | MASE=10.5047 | CRPS=198.821755
+    Seed  5734 | cols=[np.int64(136), np.int64(146), np.int64(186), np.int64(287), np.int64(360), np.int64(510), np.int64(612), np.int64(613)] | MASE=10.3686 | CRPS=232.710007
+  MASE=10.4506±1.3627  CRPS=172.247287       -1196.6%
 
 ────────────────────────────────────────────────────────────
   📡  fred_md  (pred_len=12)
-  Unique series: 107
-  Valid series: 107
-  MASE=87.7057±127.1365  CRPS=19835.1405    -2083.6%
+  N_total=107 | test_windows=1
+Download fred_md_dataset.zip:: 168kB [00:00, 620kB/s]
+creating json files: 100%|██████████| 107/107 [00:00<00:00, 100131.76it/s]
+    Seed  7270 | cols=[np.int64(5), np.int64(27), np.int64(38), np.int64(41), np.int64(76), np.int64(82), np.int64(91), np.int64(105)] | MASE=10.1734 | CRPS=11980.926056
+    Seed   860 | cols=[np.int64(39), np.int64(50), np.int64(75), np.int64(85), np.int64(89), np.int64(93), np.int64(94), np.int64(99)] | MASE=7.1145 | CRPS=54095.305846
+    Seed  5390 | cols=[np.int64(0), np.int64(3), np.int64(4), np.int64(12), np.int64(31), np.int64(46), np.int64(51), np.int64(77)] | MASE=11.6624 | CRPS=23371.430944
+    Seed  5191 | cols=[np.int64(23), np.int64(62), np.int64(69), np.int64(71), np.int64(73), np.int64(82), np.int64(90), np.int64(98)] | MASE=7.2740 | CRPS=84.783545
+    Seed  5734 | cols=[np.int64(18), np.int64(20), np.int64(25), np.int64(38), np.int64(49), np.int64(67), np.int64(80), np.int64(84)] | MASE=5.8014 | CRPS=10144.731740
+  MASE=8.4052±3.0071  CRPS=19935.435626       -109.6%
 
 ────────────────────────────────────────────────────────────
   📡  car_parts_without_missing  (pred_len=12)
-  Unique series: 300
-  ⏭️  Skip: only 0/300 series ≥ 268 steps (ctx=256 at M frequency = 7680 days)
+  N_total=2674 | test_windows=1
+Download car_parts_dataset_without_missing_values.zip:: 40.0kB [00:00, 165kB/s]
+creating json files: 100%|██████████| 2674/2674 [00:00<00:00, 11200.52it/s]
+    Seed  7270 | cols=[np.int64(135), np.int64(140), np.int64(706), np.int64(979), np.int64(1073), np.int64(1902), np.int64(2204), np.int64(2333)] | MASE=3.6473 | CRPS=0.907099
+    Seed   860 | cols=[np.int64(987), np.int64(1309), np.int64(1902), np.int64(2252), np.int64(2391), np.int64(2461), np.int64(2551), np.int64(2671)] | MASE=6.0386 | CRPS=1.437461
+    Seed  5390 | cols=[np.int64(2), np.int64(84), np.int64(108), np.int64(339), np.int64(819), np.int64(1165), np.int64(1307), np.int64(1994)] | MASE=4.1138 | CRPS=0.453857
+    Seed  5191 | cols=[np.int64(597), np.int64(1592), np.int64(1763), np.int64(1854), np.int64(1951), np.int64(2164), np.int64(2402), np.int64(2533)] | MASE=3.7247 | CRPS=1.003384
+    Seed  5734 | cols=[np.int64(475), np.int64(510), np.int64(652), np.int64(1007), np.int64(1258), np.int64(1789), np.int64(2139), np.int64(2149)] | MASE=11.6208 | CRPS=1.075398
+  MASE=5.8290±4.1978  CRPS=0.975440       -635.5%
 
 ────────────────────────────────────────────────────────────
   📡  traffic  (pred_len=24)
-  Unique series: 300
-  Valid series: 300
-  MASE=2.7756±0.2663  CRPS=0.0468    -3.1%
+  N_total=6034 | test_windows=1
+    Seed  7270 | cols=[np.int64(305), np.int64(317), np.int64(1595), np.int64(2212), np.int64(2424), np.int64(4292), np.int64(4980), np.int64(5268)] | MASE=4.2682 | CRPS=0.049303
+    Seed   860 | cols=[np.int64(2227), np.int64(2958), np.int64(4294), np.int64(5090), np.int64(5398), np.int64(5403), np.int64(5559), np.int64(5762)] | MASE=3.5956 | CRPS=0.056083
+    Seed  5390 | cols=[np.int64(6), np.int64(191), np.int64(245), np.int64(767), np.int64(1850), np.int64(2629), np.int64(2950), np.int64(4503)] | MASE=3.6612 | CRPS=0.051301
+    Seed  5191 | cols=[np.int64(1348), np.int64(3595), np.int64(3981), np.int64(4187), np.int64(4409), np.int64(4889), np.int64(5428), np.int64(5721)] | MASE=4.3701 | CRPS=0.039377
+    Seed  5734 | cols=[np.int64(1073), np.int64(1152), np.int64(1474), np.int64(2276), np.int64(2841), np.int64(4043), np.int64(4829), np.int64(4858)] | MASE=5.6620 | CRPS=0.059253
+  MASE=4.3114±1.0322  CRPS=0.051063       -60.3%
 
 ────────────────────────────────────────────────────────────
   📡  ercot  (pred_len=24)
-  Unique series: 8
-  Valid series: 8
-  MASE=12.2611±0.0000  CRPS=1533.1546    -152.8%
-
-────────────────────────────────────────────────────────────
-  📡  m1_monthly  (pred_len=18)
-  Unique series: 300
-  ⏭️  Skip: only 0/300 series ≥ 274 steps (ctx=256 at M frequency = 7680 days)
-
-────────────────────────────────────────────────────────────
-  📡  m1_quarterly  (pred_len=8)
-  Unique series: 203
-  ⏭️  Skip: only 0/203 series ≥ 264 steps (ctx=256 at Q-DEC frequency = 256 days)
-
-────────────────────────────────────────────────────────────
-  📡  cif_2016  (pred_len=12)
-  Unique series: 72
-  ⏭️  Skip: only 0/72 series ≥ 268 steps (ctx=256 at M frequency = 7680 days)
+  ⏭️  Skip: PKL not found at /content/SC-Mamba/data/real_val_datasets/ercot_nopad_512.pkl
+      Run: python data/scripts/store_real_datasets.py
 
 ────────────────────────────────────────────────────────────
   📡  exchange_rate  (pred_len=30)
-  Unique series: 8
-  Valid series: 8
-  MASE=11.7215±0.0000  CRPS=0.0221    -323.4%
+  ⏭️  Skip: PKL not found at /content/SC-Mamba/data/real_val_datasets/exchange_rate_nopad_512.pkl
+      Run: python data/scripts/store_real_datasets.py
 
 ────────────────────────────────────────────────────────────
   📡  tourism_monthly  (pred_len=24)
-  Unique series: 300
-  Valid series: 210
-  MASE=7.6630±2.4345  CRPS=5041.3780    -101.6%
+  ⏭️  Skip: PKL not found at /content/SC-Mamba/data/real_val_datasets/tourism_monthly_nopad_512.pkl
+      Run: python data/scripts/store_real_datasets.py
 
 ────────────────────────────────────────────────────────────
   📡  tourism_quarterly  (pred_len=8)
-  Unique series: 300
-  ⏭️  Skip: only 0/300 series ≥ 264 steps (ctx=256 at Q-DEC frequency = 256 days)
+  ⏭️  Skip: PKL not found at /content/SC-Mamba/data/real_val_datasets/tourism_quarterly_nopad_512.pkl
+      Run: python data/scripts/store_real_datasets.py
 
-==================================================================================
-  ZERO-SHOT FOUNDATION MODEL BENCHMARK  (K=5 seeds/dataset)
-  Source : exchange_rate (Forex, N=8, ctx=256)
-  ⚠️  NOTE: MASE denominator = lag-1 naive MAE from training history (NOT seasonality-aware)
-     In-domain baselines use utilsforecast.mase() with seasonality — values differ by design.
-==================================================================================
-Dataset                          MASE (mean±CI)         CRPS         vs Baseline    
-──────────────────────────────────────────────────────────────────────────────────
-nn5_daily_without_missing        2.7402±0.1721       12.5053        -58.1%
-weather                          0.7084±0.1582       9.2874       ✅ +48.9%
-fred_md                          87.7057±127.1365       19835.1405     -2083.6%
-traffic                          2.7756±0.2663       0.0468         -3.1%
-ercot                            12.2611±0.0000       1533.1546      -152.8%
-exchange_rate                    11.7215±0.0000       0.0221         -323.4%
-tourism_monthly                  7.6630±2.4345       5041.3780      -101.6%
-──────────────────────────────────────────────────────────────────────────────────
-BEAT BASELINE : 1/7  |  COVERAGE: 7/15  |  SKIPPED: 8
-==================================================================================
+────────────────────────────────────────────────────────────
+  📡  cif_2016  (pred_len=12)
+  ⏭️  Skip: PKL not found at /content/SC-Mamba/data/real_val_datasets/cif_2016_nopad_512.pkl
+      Run: python data/scripts/store_real_datasets.py
 
-✅ 02_test_zeroshot_multi.py v4 complete.
+────────────────────────────────────────────────────────────
+  📡  m1_monthly  (pred_len=18)
+  ⏭️  Skip: PKL not found at /content/SC-Mamba/data/real_val_datasets/m1_monthly_nopad_512.pkl
+      Run: python data/scripts/store_real_datasets.py
+
+────────────────────────────────────────────────────────────
+  📡  m1_quarterly  (pred_len=8)
+  ⏭️  Skip: PKL not found at /content/SC-Mamba/data/real_val_datasets/m1_quarterly_nopad_512.pkl
+      Run: python data/scripts/store_real_datasets.py
+
+────────────────────────────────────────────────────────────
+  📡  nn5_weekly  (pred_len=8)
+  N_total=111 | test_windows=1
+Download nn5_weekly_dataset.zip:: 64.0kB [00:00, 192kB/s]
+creating json files: 100%|██████████| 111/111 [00:00<00:00, 85019.68it/s]
+    Seed  7270 | cols=[np.int64(5), np.int64(28), np.int64(39), np.int64(42), np.int64(78), np.int64(85), np.int64(95), np.int64(109)] | MASE=20.4510 | CRPS=86.520513
+    Seed   860 | cols=[np.int64(40), np.int64(52), np.int64(78), np.int64(88), np.int64(93), np.int64(97), np.int64(98), np.int64(103)] | MASE=19.8407 | CRPS=70.527373
+    Seed  5390 | cols=[np.int64(0), np.int64(3), np.int64(4), np.int64(13), np.int64(32), np.int64(48), np.int64(53), np.int64(80)] | MASE=19.9005 | CRPS=86.831560
+    Seed  5191 | cols=[np.int64(24), np.int64(64), np.int64(72), np.int64(74), np.int64(76), np.int64(85), np.int64(94), np.int64(102)] | MASE=17.8215 | CRPS=73.448834
+    Seed  5734 | cols=[np.int64(19), np.int64(21), np.int64(26), np.int64(40), np.int64(51), np.int64(70), np.int64(83), np.int64(88)] | MASE=20.1628 | CRPS=69.653737
+  MASE=19.6353±1.2943  CRPS=77.396404       -1863.5%
+
+────────────────────────────────────────────────────────────
+  📡  covid_deaths  (pred_len=30)
+  N_total=266 | test_windows=1
+Download covid_deaths_dataset.zip:: 32.0kB [00:00, 94.4kB/s]
+creating json files: 100%|██████████| 266/266 [00:00<00:00, 143073.21it/s]
+    Seed  7270 | cols=[np.int64(13), np.int64(69), np.int64(96), np.int64(104), np.int64(189), np.int64(214), np.int64(230), np.int64(264)] | MASE=40.6316 | CRPS=804.063771
+    Seed   860 | cols=[np.int64(98), np.int64(128), np.int64(188), np.int64(219), np.int64(232), np.int64(236), np.int64(241), np.int64(251)] | MASE=72.7015 | CRPS=490.837084
+    Seed  5390 | cols=[np.int64(0), np.int64(8), np.int64(10), np.int64(32), np.int64(80), np.int64(115), np.int64(129), np.int64(196)] | MASE=38.0153 | CRPS=182.884089
+    Seed  5191 | cols=[np.int64(59), np.int64(157), np.int64(174), np.int64(181), np.int64(189), np.int64(211), np.int64(234), np.int64(249)] | MASE=41.6218 | CRPS=48.686664
+    Seed  5734 | cols=[np.int64(46), np.int64(50), np.int64(64), np.int64(98), np.int64(124), np.int64(174), np.int64(208), np.int64(212)] | MASE=36.9450 | CRPS=1615.577594
+  MASE=45.9830±18.6942  CRPS=628.409840       -482.1%
+
+==========================================================================================
+Dataset                                 MASE (mean±CI)         CRPS        MAE    vs Baseline
+──────────────────────────────────────────────────────────────────────────────────────────
+nn5_daily_without_missing                4.3008±0.4096      12.6521    17.3341        -275.9%
+hospital                                10.4506±1.3627     172.2473   283.8144       -1196.6%
+fred_md                                  8.4052±3.0071   19935.4356 28679.7552        -109.6%
+car_parts_without_missing                5.8290±4.1978       0.9754     0.5240        -635.5%
+traffic                                  4.3114±1.0322       0.0511     0.0477         -60.3%
+nn5_weekly                              19.6353±1.2943      77.3964   127.6027       -1863.5%
+covid_deaths                           45.9830±18.6942     628.4098   994.1044        -482.1%
+──────────────────────────────────────────────────────────────────────────────────────────
+BEAT BASELINE : 0/7  |  COVERAGE: 7/15  |  SKIPPED: 8
+==========================================================================================
+
+✅ 02_test_zeroshot_multi.py v6 complete.

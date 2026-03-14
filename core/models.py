@@ -255,7 +255,10 @@ class SpectralVariationalLayer(nn.Module):
         F_hat = mask * F_complex
         
         # 3. Message Passing (Pointwise multiplication in frequency)
-        H_updated_freq = F_hat * H_freq
+        # FIX: Added Residual Connection. 
+        # Without this, if mask is 0, all temporal representations from Z are destroyed.
+        # With this, mask=0 means independent univariate models (Z spatially untampered).
+        H_updated_freq = H_freq + (F_hat * H_freq)
         
         # 4. Inverse Fourier Transform for Spatial Recovery
         Z_spatial_updated = torch.fft.irfft(H_updated_freq, n=N_assets, dim=1)
@@ -328,8 +331,6 @@ class SCMamba_Forecaster(nn.Module):
         # 3. Distributional Decoding
         mu = self.mu_head(Z_graph).squeeze(-1)
         sigma2 = self.sigma_head(Z_graph).squeeze(-1) + 1e-6 # Add epsilon for numerical stability
-        # DIAG FIX: Prevent Sigma Collapse Hack
-        sigma2 = torch.clamp(sigma2, min=0.05)
         
         return {
             'mu': mu,

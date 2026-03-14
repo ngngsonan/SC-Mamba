@@ -91,6 +91,71 @@ BASELINES = {
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Robust model loading — reads architecture config from checkpoint
+# ─────────────────────────────────────────────────────────────────────────────
+def load_model_from_checkpoint(ckpt_path, device, N_assets_override=None):
+    """
+    Load SCMamba_Forecaster from a checkpoint, reconstructing the exact
+    architecture the model was trained with.
+
+    The checkpoint (saved by train.py) stores:
+      - 'model_state_dict': the weights
+      - 'ssm_config': the backbone config dict (num_encoder_layers, etc.)
+
+    If ssm_config is missing (legacy checkpoints), infer num_encoder_layers
+    from the state_dict keys.
+
+    Parameters
+    ----------
+    ckpt_path       : path to .pth checkpoint file
+    device          : torch device
+    N_assets_override : if set, override N_assets (default: infer from ckpt)
+
+    Returns
+    -------
+    model : SCMamba_Forecaster on device, in eval mode
+    """
+    ckpt = torch.load(ckpt_path, map_location=device)
+    state_dict = ckpt.get('model_state_dict', ckpt)
+
+    # ── Recover ssm_config from checkpoint ────────────────────────────────────
+    ssm_config = ckpt.get('ssm_config', {})
+
+    # If ssm_config doesn't have num_encoder_layers, infer from state_dict
+    if 'num_encoder_layers' not in ssm_config:
+        layer_indices = set()
+        for key in state_dict.keys():
+            if 'mamba_encoder_layers.' in key:
+                # e.g. "backbone.mamba_encoder_layers.2.mamba_layer.dt_bias"
+                parts = key.split('.')
+                idx = parts[parts.index('mamba_encoder_layers') + 1]
+                layer_indices.add(int(idx))
+        if layer_indices:
+            inferred = max(layer_indices) + 1
+            ssm_config['num_encoder_layers'] = inferred
+            print(f"  [loader] Inferred num_encoder_layers={inferred} from state_dict keys")
+
+    # ── Recover N_assets ──────────────────────────────────────────────────────
+    if N_assets_override is not None:
+        N_assets = N_assets_override
+    else:
+        # Try checkpoint metadata first, then fall back to config default
+        N_assets = ckpt.get('N_assets', N_ASSETS)
+
+    # ── Construct model with correct architecture ─────────────────────────────
+    model = SCMamba_Forecaster(N_assets=N_assets, ssm_config=ssm_config).to(device)
+    model.load_state_dict(state_dict, strict=True)
+    model.eval()
+
+    print(f"  ✅ Loaded: {os.path.basename(ckpt_path)}")
+    print(f"     N_assets={model.N_assets} | "
+          f"num_encoder_layers={ssm_config.get('num_encoder_layers', '?')} | "
+          f"tau={model.spectral_layer.tau.item():.4f}")
+
+    return model
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Helper: canonical inference on a sub-sampled MultivariateRealDataset
 # Mirrors multivariate_predict_aligned() from eval_real_dataset.py exactly
 # ─────────────────────────────────────────────────────────────────────────────
