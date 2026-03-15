@@ -44,7 +44,13 @@ from torch.optim.lr_scheduler import CosineAnnealingLR, CosineAnnealingWarmResta
 
 def nll_loss(mu, sigma2, target):
     """
-    Negative Log-Likelihood for Multivariate Gaussian (Independent across series)
+    Negative Log-Likelihood with Detached Gradient (prevents Variance Starvation).
+
+    Why detach: In standard Gaussian NLL, gradient(mu) ∝ 1/sigma2. When sigma2→0,
+    mu gradient explodes, causing mu to overfit noise instead of learning general
+    patterns. Detaching sigma2 from mu's gradient path makes mu's gradient ∝ residual
+    (similar to MSE), while sigma2 learns calibrated uncertainty from frozen mu.
+
     mu: [Batch, Pred_Len]
     sigma2: [Batch, Pred_Len]
     target: [Batch, Pred_Len]
@@ -61,8 +67,11 @@ def nll_loss(mu, sigma2, target):
     sigma2_v = sigma2[valid_mask]
     target_v = target[valid_mask]
     
-    loss = 0.5 * torch.log(2 * np.pi * sigma2_v) + 0.5 * ((target_v - mu_v) ** 2) / sigma2_v
-    return loss.mean()
+    # Detached: mu gradient not amplified by 1/sigma2 (prevents variance starvation)
+    loss_mu = 0.5 * ((target_v - mu_v) ** 2) / sigma2_v.detach()
+    # Detached: sigma2 gradient not corrupted by local mu errors (stable calibration)
+    loss_sigma = 0.5 * torch.log(2 * np.pi * sigma2_v) + 0.5 * ((target_v - mu_v.detach()) ** 2) / sigma2_v
+    return (loss_mu + loss_sigma).mean()
 
 
 def adaptive_chunk_size(context_len: int) -> int:
@@ -359,6 +368,7 @@ def train_model(config):
         epoch_alpha_sum = 0.0
         epoch_sparsity_sum = 0.0
         epoch_collapse_sum = 0.0
+        epoch_mask_mean_sum = 0.0  # DIAG: track mask density for sparsity penalty
 
         batch_idx = 0
         if config.get('diag_prints', False):
@@ -459,8 +469,19 @@ def train_model(config):
             global_step = epoch * config['training_rounds'] + batch_idx
             total_warmup_steps = beta_anneal_epochs * config['training_rounds']
             beta = min(beta_target, beta_target * global_step / max(total_warmup_steps, 1))
-            
-            loss = nll_loss_val + beta * kl_divergence
+
+            # gamma_sparsity annealing: L1 penalty on mask density → incentivizes sparse graph.
+            # Without this, NLL maximizes message passing → fully-connected graph (Mask Sparsity=0%).
+            # Uses same annealing schedule as beta to avoid disrupting early NLL learning.
+            gamma_target = config.get('gamma_sparsity', 0.0)
+            gamma = min(gamma_target, gamma_target * global_step / max(total_warmup_steps, 1))
+            # mask_mean is a tensor with gradient (from sigmoid in SpectralVariationalLayer)
+            mask_mean_tensor = output['spectral_stats']['mask_mean']
+            # Convert to tensor if guard bypass returned float 0.0
+            if not isinstance(mask_mean_tensor, torch.Tensor):
+                mask_mean_tensor = torch.tensor(mask_mean_tensor, device=device)
+
+            loss = nll_loss_val + beta * kl_divergence + gamma * mask_mean_tensor
 
             loss.backward()
             # Clip gradients to prevent NLL instability when σ² approaches floor (1e-6 → gradient ≈ 1e6)
@@ -481,6 +502,8 @@ def train_model(config):
                 epoch_tau_sum += output['spectral_stats']['tau'].item()
                 epoch_alpha_sum += output['spectral_stats']['alpha'].item()
                 epoch_sparsity_sum += output['spectral_stats']['sparsity'].item()
+                _mm = output['spectral_stats']['mask_mean']
+                epoch_mask_mean_sum += _mm.item() if isinstance(_mm, torch.Tensor) else _mm
             
             # Collapse tracking: sigma2 < 1e-3
             collapse_rate = (output['sigma2'] < 1e-3).float().mean().item()
@@ -584,9 +607,11 @@ def train_model(config):
                 else:                
                     scaled_target = (target - output['scale'][0].squeeze(-1)) / output['scale'][1].squeeze(-1)
                 
-                # Validation Loss (NLL) — use annealed beta consistent with training
+                # Validation Loss (NLL + KL + Sparsity) — mirrors training objective
                 val_nll = nll_loss(output['mu'], output['sigma2'], scaled_target.float()).item()
-                val_loss = val_nll + beta * output['kl_loss'].item()
+                _val_mm = output['spectral_stats']['mask_mean']
+                _val_mm_val = _val_mm.item() if isinstance(_val_mm, torch.Tensor) else _val_mm
+                val_loss = val_nll + beta * output['kl_loss'].item() + gamma * _val_mm_val
                 total_val_loss += val_loss
 
                 if batch_id % 10 == 9:
@@ -630,6 +655,7 @@ def train_model(config):
             print(f"  ╔══════════════ EPOCH {epoch+1} DIAGNOSTICS ══════════════╗")
             print(f"  ║ LR           = {current_lr:.2e}")
             print(f"  ║ beta (KL wt) = {beta:.4f}")
+            print(f"  ║ gamma (spar) = {gamma:.4f}")
             print(f"  ║ avg NLL      = {epoch_nll_sum / batch_idx:.4f}")
             print(f"  ║ avg KL       = {epoch_kl_sum / batch_idx:.4f}")
             print(f"  ║ avg KL×beta  = {beta * epoch_kl_sum / batch_idx:.6f}")
@@ -638,6 +664,7 @@ def train_model(config):
             print(f"  ║ sigma2 range = [{epoch_sigma2_min:.6f}, {epoch_sigma2_max:.4f}]")
             if epoch_tau_sum > 0 or epoch_sparsity_sum >= 0:
                 print(f"  ║ avg Tau      = {epoch_tau_sum / batch_idx:.4f} (Alpha = {epoch_alpha_sum / batch_idx:.2f})")
+                print(f"  ║ avg MaskMean = {epoch_mask_mean_sum / batch_idx:.4f}")
                 print(f"  ║ Mask Sparsity= {epoch_sparsity_sum / batch_idx * 100:.2f}%")
                 print(f"  ║ S2 Collapse  = {epoch_collapse_sum / batch_idx * 100:.2f}% (<1e-3)")
             print(f"  ║ val_loss     = {avg_val_loss:.4f}")

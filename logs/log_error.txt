@@ -1,150 +1,335 @@
+ 
+=================================================================
+🚀 CROSS-ASSET TRAINING: EXCHANGE_RATE
+   num_assets    : 8
+   prior_mix_frac: 0.5  (synthetic 50% + real 50%)
+   num_epochs    : 30  (train from scratch)
+=================================================================
+📝 Config saved: /content/SC-Mamba/core/config.v2_multi_exchange_rate.yaml
+config:
+{'batch_size': 8,
+ 'beta_anneal_epochs': 10,
+ 'beta_kl': 0.2,
+ 'context_len': 256,
+ 'continue_training': True,
+ 'debugging': False,
+ 'diag_prints': True,
+ 'encoding_dropout': 0.1,
+ 'gamma_sparsity': 0.1,
+ 'handle_constants_model': True,
+ 'initial_lr': 5e-05,
+ 'learning_rate': 1e-05,
+ 'loss': 'nll',
+ 'lr_scheduler': 'cosine',
+ 'max_seq_len': 256,
+ 'min_seq_len': 60,
+ 'model_prefix': '/content/drive/MyDrive/Colab '
+                 'Notebooks/SCMamba/sc_mamba_checkpoints',
+ 'multipoint': True,
+ 'num_assets': 8,
+ 'num_epochs': 30,
+ 'pred_len': 20,
+ 'pred_len_min': 10,
+ 'pred_len_sample': False,
+ 'prior_config': {'curriculum_learning': False,
+                  'damp_and_spike': False,
+                  'damping_noise_ratio': 0.0,
+                  'fp_options': {'harmonic_rate': 0.75,
+                                 'harmonic_scale_ratio': 0.4,
+                                 'linear_random_walk_frac': 0,
+                                 'scale_noise': [0.6, 0.3],
+                                 'seasonal_only': False,
+                                 'transition_ratio': 0.0,
+                                 'trend_additional': True,
+                                 'trend_exp': False},
+                  'gp_prior_config': {'gaussian_sampling_ratio': 0.2,
+                                      'gaussians_periodic': True,
+                                      'kernel_bank': {'linear_kernel': 1,
+                                                      'matern_kernel': 1.5,
+                                                      'periodic_kernel': 5,
+                                                      'polynomial_kernel': 0,
+                                                      'spectral_mixture_kernel': 0},
+                                      'kernel_periods': [4,
+                                                         5,
+                                                         7,
+                                                         21,
+                                                         24,
+                                                         30,
+                                                         60,
+                                                         120],
+                                      'likelihood_noise_level': 0.4,
+                                      'max_kernels': 6,
+                                      'max_period_ratio': 1.0,
+                                      'noise_level': 'random',
+                                      'peak_spike_ratio': 0.1,
+                                      'periods_per_freq': 0.5,
+                                      'subfreq_ratio': 0.2,
+                                      'use_original_gp': False},
+                  'mixup_prob': 0.0,
+                  'mixup_series': 4,
+                  'prior_mix_frac': 0.5,
+                  'spike_batch_ratio': 0.0,
+                  'spike_noise_ratio': 0.0,
+                  'spike_signal_ratio': 0.0},
+ 'real_test_datasets': ['exchange_rate'],
+ 'real_test_interval': 5,
+ 'real_train_datasets': ['exchange_rate'],
+ 'sample_multi_pred': 0.3,
+ 'scaler': 'min_max',
+ 'seed': 42,
+ 'sin_pos_const': False,
+ 'sin_pos_enc': False,
+ 'ssm_config': {'bidirectional': False,
+                'block_expansion': 2,
+                'chunk_size': 256,
+                'd_state': 128,
+                'enc_conv': True,
+                'enc_conv_kernel': 5,
+                'global_residual': False,
+                'headdim': 128,
+                'in_proj_norm': False,
+                'init_conv_kernel': 5,
+                'init_conv_max_dilation': 3,
+                'init_dil_conv': True,
+                'initial_gelu_flag': True,
+                'linear_seq': 15,
+                'mamba2': True,
+                'norm': True,
+                'norm_type': 'layernorm',
+                'num_encoder_layers': 2,
+                'residual': False,
+                'token_embed_len': 1024},
+ 'sub_day': False,
+ 't_max': -1,
+ 'training_rounds': 200,
+ 'validation_rounds': 50,
+ 'version': 'v2_multi_exchange_rate',
+ 'wandb': False}
+cuda device usage (before model load): 0.0
+Using SCMamba_Forecaster (Spectral Variational Graph)
 
 ============================================================
-  SC-Mamba Zero-Shot Foundation Model Benchmark (v6 Canonical)
-  Context lock: ctx=256 | N=8
-  Seeds: [7270, 860, 5390, 5191, 5734]
+  CHECKPOINT CONFIGURATION
 ============================================================
-  ✅ model.N_assets=8 matches N_ASSETS=8
+  model_save_name   : SCMamba_v2_multi_exchange_rate
+  model_prefix      : /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints
+  continue_training : True
+  best  checkpoint  : /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints/SCMamba_v2_multi_exchange_rate_best.pth
+       exists?      : False
+  periodic checkpoint: /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints/SCMamba_v2_multi_exchange_rate.pth
+       exists?      : False
+  final checkpoint  : /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints/SCMamba_v2_multi_exchange_rate_Final.pth
+       exists?      : False
+============================================================
 
-────────────────────────────────────────────────────────────
-  📡  nn5_daily_without_missing  (pred_len=56)
-  N_total=111 | test_windows=1
-Download nn5_daily_dataset_without_missing_values.zip:: 288kB [00:00, 777kB/s]
-creating json files: 100%|██████████| 111/111 [00:00<00:00, 105023.18it/s]
-  [DIAG:pad] seq_len=312 → padded=512 (pad=200, waste=39.1%), chunk_size=256
-  [DIAG:spectral] N_assets=8, freq_bins=5, mask=[0.1197, 0.4543], alpha=1.00, tau=2.0007, KL=0.023826, fft_identity_diff=0.00e+00
-    Seed  7270 | cols=[np.int64(5), np.int64(28), np.int64(39), np.int64(42), np.int64(78), np.int64(85), np.int64(95), np.int64(109)] | MASE=4.3088 | CRPS=13.436657
-  [DIAG:pad] seq_len=312 → padded=512 (pad=200, waste=39.1%), chunk_size=256
-  [DIAG:spectral] N_assets=8, freq_bins=5, mask=[0.1197, 0.4756], alpha=1.00, tau=2.0007, KL=0.024902, fft_identity_diff=0.00e+00
-    Seed   860 | cols=[np.int64(40), np.int64(52), np.int64(78), np.int64(88), np.int64(93), np.int64(97), np.int64(98), np.int64(103)] | MASE=4.1286 | CRPS=11.965707
-  [DIAG:pad] seq_len=312 → padded=512 (pad=200, waste=39.1%), chunk_size=256
-  [DIAG:spectral] N_assets=8, freq_bins=5, mask=[0.1197, 0.4531], alpha=1.00, tau=2.0007, KL=0.023749, fft_identity_diff=0.00e+00
-    Seed  5390 | cols=[np.int64(0), np.int64(3), np.int64(4), np.int64(13), np.int64(32), np.int64(48), np.int64(53), np.int64(80)] | MASE=4.7442 | CRPS=14.581073
-    Seed  5191 | cols=[np.int64(24), np.int64(64), np.int64(72), np.int64(74), np.int64(76), np.int64(85), np.int64(94), np.int64(102)] | MASE=3.8696 | CRPS=12.315259
-    Seed  5734 | cols=[np.int64(19), np.int64(21), np.int64(26), np.int64(40), np.int64(51), np.int64(70), np.int64(83), np.int64(88)] | MASE=4.4529 | CRPS=10.962034
-  MASE=4.3008±0.4096  CRPS=12.652146       -275.9%
+⚠️  continue_training=True but no checkpoint found at:
+     /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints/SCMamba_v2_multi_exchange_rate_best.pth
+     /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints/SCMamba_v2_multi_exchange_rate.pth
+Starting fresh training (no checkpoint loaded)
+[Train] Multivariate mode: N_assets=8, datasets=['exchange_rate']
+[MultivariateRealDataset] exchange_rate | N_assets=8 | train_windows=337 | val_windows=11
+cuda device usage (after model load): 92.50341796875
+Model size: 23756004
+cuda device usage (before training start): 92.51513671875
+============Training==================
+Waiting for first batch from dataloader...
+  [DIAG:pad] seq_len=276 → padded=512 (pad=236, waste=46.1%), chunk_size=256
+  [DIAG:spectral] N_assets=8, freq_bins=5, mask=[0.1194, 0.9891], alpha=1.00, tau=2.0000, KL=0.024644, fft_identity_diff=0.00e+00
+  [DIAG] history=torch.Size([64, 256]), pred_len=20, mu=torch.Size([64, 20]), sigma2 range=[0.574847, 0.9246], kl=0.024644
+  [DIAG:pad] seq_len=276 → padded=512 (pad=236, waste=46.1%), chunk_size=256
+  [DIAG:spectral] N_assets=8, freq_bins=5, mask=[0.1193, 0.9962], alpha=1.00, tau=2.0000, KL=0.023088, fft_identity_diff=0.00e+00
+  [DIAG:pad] seq_len=276 → padded=512 (pad=236, waste=46.1%), chunk_size=256
+  [DIAG:spectral] N_assets=8, freq_bins=5, mask=[0.1194, 0.9817], alpha=1.00, tau=2.0001, KL=0.019399, fft_identity_diff=0.00e+00
+Epoch: 1, Batch: 10, Total Loss: 0.5584, NLL: 0.5584, KL: 0.0276 From torchmetric: 0.0048
+Epoch: 1, Batch: 20, Total Loss: 0.3192, NLL: 0.3192, KL: 0.0302 From torchmetric: 0.0038
+Epoch: 1, Batch: 30, Total Loss: -0.0600, NLL: -0.0601, KL: 0.0297 From torchmetric: 0.0029
+Epoch: 1, Batch: 40, Total Loss: -0.2930, NLL: -0.2931, KL: 0.0330 From torchmetric: 0.0022
+============Validation==================
+Epoch: 1, SC. Validation Loss: -0.6841 From torchmetric: 0.0000
+Time taken for epoch: 11.4 mins 26 secs.
+  ╔══════════════ EPOCH 1 DIAGNOSTICS ══════════════╗
+  ║ LR           = 5.00e-05
+  ║ beta (KL wt) = 0.0041
+  ║ avg NLL      = 0.1044
+  ║ avg KL       = 0.0303
+  ║ avg KL×beta  = 0.000124
+  ║ avg Loss     = 0.1044
+  ║ avg GradNorm = 46.7292
+  ║ sigma2 range = [0.017021, 0.9710]
+  ║ avg Tau      = 2.0005 (Alpha = 1.00)
+  ║ Mask Sparsity= 0.00%
+  ║ S2 Collapse  = 0.00% (<1e-3)
+  ║ val_loss     = -0.6841
+  ║ best_val     = inf
+  ╚═══════════════════════════════════════════════════════╝
+  🏆 Best checkpoint saved (epoch 1, val_loss=-0.6841)
+============Training==================
+Waiting for first batch from dataloader...
+  [DIAG] history=torch.Size([64, 256]), pred_len=20, mu=torch.Size([64, 20]), sigma2 range=[0.018272, 0.0464], kl=0.032670
+Epoch: 2, Batch: 10, Total Loss: -0.3224, NLL: -0.3232, KL: 0.0367 From torchmetric: 0.0005
+Epoch: 2, Batch: 20, Total Loss: -0.3444, NLL: -0.3453, KL: 0.0398 From torchmetric: 0.0005
+Epoch: 2, Batch: 30, Total Loss: -0.3704, NLL: -0.3712, KL: 0.0361 From torchmetric: 0.0004
+Epoch: 2, Batch: 40, Total Loss: -0.2729, NLL: -0.2740, KL: 0.0472 From torchmetric: 0.0004
+============Validation==================
+Epoch: 2, SC. Validation Loss: -0.8502 From torchmetric: 0.0000
+Time taken for epoch: 0.8 mins 46 secs.
+  ╔══════════════ EPOCH 2 DIAGNOSTICS ══════════════╗
+  ║ LR           = 4.99e-05
+  ║ beta (KL wt) = 0.0241
+  ║ avg NLL      = -0.3337
+  ║ avg KL       = 0.0405
+  ║ avg KL×beta  = 0.000976
+  ║ avg Loss     = -0.3328
+  ║ avg GradNorm = 81.5049
+  ║ sigma2 range = [0.006562, 0.0530]
+  ║ avg Tau      = 2.0019 (Alpha = 1.00)
+  ║ Mask Sparsity= 0.00%
+  ║ S2 Collapse  = 0.00% (<1e-3)
+  ║ val_loss     = -0.8502
+  ║ best_val     = -0.6841
+  ╚═══════════════════════════════════════════════════════╝
+  🏆 Best checkpoint saved (epoch 2, val_loss=-0.8502)
+============Training==================
+Waiting for first batch from dataloader...
+  [DIAG] history=torch.Size([64, 256]), pred_len=1, mu=torch.Size([64, 1]), sigma2 range=[0.010893, 0.0152], kl=0.051420
+Epoch: 3, Batch: 10, Total Loss: -0.3266, NLL: -0.3284, KL: 0.0454 From torchmetric: 0.0004
+Epoch: 3, Batch: 20, Total Loss: -0.3118, NLL: -0.3137, KL: 0.0456 From torchmetric: 0.0003
+Epoch: 3, Batch: 30, Total Loss: -0.3723, NLL: -0.3743, KL: 0.0457 From torchmetric: 0.0003
+Epoch: 3, Batch: 40, Total Loss: -0.4569, NLL: -0.4590, KL: 0.0471 From torchmetric: 0.0003
+============Validation==================
+Epoch: 3, SC. Validation Loss: -0.8243 From torchmetric: 0.0000
+Time taken for epoch: 0.8 mins 45 secs.
+  ╔══════════════ EPOCH 3 DIAGNOSTICS ══════════════╗
+  ║ LR           = 4.96e-05
+  ║ beta (KL wt) = 0.0441
+  ║ avg NLL      = -0.3749
+  ║ avg KL       = 0.0459
+  ║ avg KL×beta  = 0.002025
+  ║ avg Loss     = -0.3729
+  ║ avg GradNorm = 101.1822
+  ║ sigma2 range = [0.010159, 0.0371]
+  ║ avg Tau      = 2.0030 (Alpha = 1.00)
+  ║ Mask Sparsity= 0.00%
+  ║ S2 Collapse  = 0.00% (<1e-3)
+  ║ val_loss     = -0.8243
+  ║ best_val     = -0.8502
+  ╚═══════════════════════════════════════════════════════╝
+============Training==================
+Waiting for first batch from dataloader...
+  [DIAG] history=torch.Size([64, 256]), pred_len=20, mu=torch.Size([64, 20]), sigma2 range=[0.014004, 0.0272], kl=0.044949
+Epoch: 4, Batch: 10, Total Loss: -0.4818, NLL: -0.4845, KL: 0.0451 From torchmetric: 0.0003
+Epoch: 4, Batch: 20, Total Loss: -0.2659, NLL: -0.2688, KL: 0.0467 From torchmetric: 0.0003
+Epoch: 4, Batch: 30, Total Loss: -0.5557, NLL: -0.5583, KL: 0.0421 From torchmetric: 0.0003
+Epoch: 4, Batch: 40, Total Loss: -0.5751, NLL: -0.5783, KL: 0.0501 From torchmetric: 0.0003
+============Validation==================
+Epoch: 4, SC. Validation Loss: -0.8995 From torchmetric: 0.0000
+Time taken for epoch: 0.8 mins 45 secs.
+  ╔══════════════ EPOCH 4 DIAGNOSTICS ══════════════╗
+  ║ LR           = 4.90e-05
+  ║ beta (KL wt) = 0.0641
+  ║ avg NLL      = -0.4705
+  ║ avg KL       = 0.0463
+  ║ avg KL×beta  = 0.002969
+  ║ avg Loss     = -0.4677
+  ║ avg GradNorm = 69.3011
+  ║ sigma2 range = [0.008567, 0.0455]
+  ║ avg Tau      = 2.0038 (Alpha = 1.00)
+  ║ Mask Sparsity= 0.00%
+  ║ S2 Collapse  = 0.00% (<1e-3)
+  ║ val_loss     = -0.8995
+  ║ best_val     = -0.8502
+  ╚═══════════════════════════════════════════════════════╝
+  🏆 Best checkpoint saved (epoch 4, val_loss=-0.8995)
+============Training==================
+Waiting for first batch from dataloader...
+  [DIAG] history=torch.Size([64, 256]), pred_len=20, mu=torch.Size([64, 20]), sigma2 range=[0.009127, 0.0222], kl=0.052030
+Epoch: 5, Batch: 10, Total Loss: -0.4093, NLL: -0.4134, KL: 0.0504 From torchmetric: 0.0003
+Epoch: 5, Batch: 20, Total Loss: -0.4746, NLL: -0.4782, KL: 0.0451 From torchmetric: 0.0003
+Epoch: 5, Batch: 30, Total Loss: -0.4055, NLL: -0.4095, KL: 0.0482 From torchmetric: 0.0003
+Epoch: 5, Batch: 40, Total Loss: -0.6442, NLL: -0.6484, KL: 0.0500 From torchmetric: 0.0003
+============Validation==================
+Epoch: 5, SC. Validation Loss: -0.9303 From torchmetric: 0.0000
+Time taken for epoch: 0.8 mins 45 secs.
+  ╔══════════════ EPOCH 5 DIAGNOSTICS ══════════════╗
+  ║ LR           = 4.83e-05
+  ║ beta (KL wt) = 0.0841
+  ║ avg NLL      = -0.4703
+  ║ avg KL       = 0.0486
+  ║ avg KL×beta  = 0.004084
+  ║ avg Loss     = -0.4663
+  ║ avg GradNorm = 77.3827
+  ║ sigma2 range = [0.009127, 0.0528]
+  ║ avg Tau      = 2.0044 (Alpha = 1.00)
+  ║ Mask Sparsity= 0.00%
+  ║ S2 Collapse  = 0.00% (<1e-3)
+  ║ val_loss     = -0.9303
+  ║ best_val     = -0.8995
+  ╚═══════════════════════════════════════════════════════╝
+  🏆 Best checkpoint saved (epoch 5, val_loss=-0.9303)
+Evaluating on real dataset: exchange_rate
+  [eval_pipeline] Multivariate aligned eval: N_assets=8 on exchange_rate
+MASE: 0.6822, MAE: 0.0036, RMSE: 0.0036, SMAPE: 0.0021, NLL: -4.1177, CRPS: 0.0027
+  [DIAG:mase] median_real_mase=0.6822 (over 1 datasets, 0 excluded inf/nan)
+  🎯 Best MASE checkpoint saved (epoch 5, median_mase=0.6822)
+============Training==================
+Waiting for first batch from dataloader...
+  [DIAG] history=torch.Size([64, 256]), pred_len=20, mu=torch.Size([64, 20]), sigma2 range=[0.011326, 0.0230], kl=0.052082
+Epoch: 6, Batch: 10, Total Loss: -0.6813, NLL: -0.6866, KL: 0.0529 From torchmetric: 0.0002
+Epoch: 6, Batch: 20, Total Loss: -0.5897, NLL: -0.5951, KL: 0.0534 From torchmetric: 0.0002
+Epoch: 6, Batch: 30, Total Loss: -0.4632, NLL: -0.4683, KL: 0.0496 From torchmetric: 0.0002
+Epoch: 6, Batch: 40, Total Loss: -0.5630, NLL: -0.5678, KL: 0.0460 From torchmetric: 0.0002
+============Validation==================
+Epoch: 6, SC. Validation Loss: -0.7844 From torchmetric: 0.0001
+Time taken for epoch: 0.8 mins 46 secs.
+  ╔══════════════ EPOCH 6 DIAGNOSTICS ══════════════╗
+  ║ LR           = 4.73e-05
+  ║ beta (KL wt) = 0.1041
+  ║ avg NLL      = -0.5745
+  ║ avg KL       = 0.0504
+  ║ avg KL×beta  = 0.005247
+  ║ avg Loss     = -0.5693
+  ║ avg GradNorm = 72.0787
+  ║ sigma2 range = [0.009039, 0.0480]
+  ║ avg Tau      = 2.0047 (Alpha = 1.00)
+  ║ Mask Sparsity= 0.00%
+  ║ S2 Collapse  = 0.00% (<1e-3)
+  ║ val_loss     = -0.7844
+  ║ best_val     = -0.9303
+  ╚═══════════════════════════════════════════════════════╝
+============Training==================
+Waiting for first batch from dataloader...
+  [DIAG] history=torch.Size([64, 256]), pred_len=3, mu=torch.Size([64, 3]), sigma2 range=[0.012158, 0.0216], kl=0.051298
+Epoch: 7, Batch: 10, Total Loss: -0.6038, NLL: -0.6101, KL: 0.0530 From torchmetric: 0.0003
+Epoch: 7, Batch: 20, Total Loss: -0.6059, NLL: -0.6123, KL: 0.0528 From torchmetric: 0.0002
+Epoch: 7, Batch: 30, Total Loss: -0.3102, NLL: -0.3170, KL: 0.0558 From torchmetric: 0.0003
+Epoch: 7, Batch: 40, Total Loss: -0.6434, NLL: -0.6504, KL: 0.0565 From torchmetric: 0.0002
+============Validation==================
+Epoch: 7, SC. Validation Loss: 0.4072 From torchmetric: 0.0003
+Time taken for epoch: 0.8 mins 45 secs.
+  ╔══════════════ EPOCH 7 DIAGNOSTICS ══════════════╗
+  ║ LR           = 4.62e-05
+  ║ beta (KL wt) = 0.1241
+  ║ avg NLL      = -0.5546
+  ║ avg KL       = 0.0547
+  ║ avg KL×beta  = 0.006794
+  ║ avg Loss     = -0.5479
+  ║ avg GradNorm = 76.9840
+  ║ sigma2 range = [0.007443, 0.0347]
+  ║ avg Tau      = 2.0053 (Alpha = 1.00)
+  ║ Mask Sparsity= 0.00%
+  ║ S2 Collapse  = 0.00% (<1e-3)
+  ║ val_loss     = 0.4072
+  ║ best_val     = -0.9303
+  ╚═══════════════════════════════════════════════════════╝
+============Training==================
+Waiting for first batch from dataloader...
+---------------------------------------------------------------------------
+KeyboardInterrupt                         Traceback (most recent call last)
+/tmp/ipykernel_3365/12800505.py in <cell line: 0>()
+    175     cmd = ['python', f'{PROJECT_ROOT}/core/train.py', '-c', config_path]
+    176     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+--> 177     for line in iter(proc.stdout.readline, ''):
+    178         print(line, end='', flush=True)
+    179     proc.stdout.close()
 
-────────────────────────────────────────────────────────────
-  📡  weather  (pred_len=30)
-  ❌ Failed to load: All series in the dataset were dropped due to excessive NaN values. Check the input PKL file.
-
-────────────────────────────────────────────────────────────
-  📡  hospital  (pred_len=12)
-  N_total=767 | test_windows=1
-Download hospital_dataset.zip:: 80.0kB [00:00, 291kB/s]
-creating json files: 100%|██████████| 767/767 [00:00<00:00, 195754.60it/s]
-    Seed  7270 | cols=[np.int64(38), np.int64(40), np.int64(201), np.int64(280), np.int64(306), np.int64(545), np.int64(628), np.int64(668)] | MASE=11.0571 | CRPS=64.647586
-    Seed   860 | cols=[np.int64(283), np.int64(373), np.int64(545), np.int64(642), np.int64(681), np.int64(684), np.int64(703), np.int64(729)] | MASE=11.6230 | CRPS=288.438727
-    Seed  5390 | cols=[np.int64(0), np.int64(24), np.int64(31), np.int64(96), np.int64(234), np.int64(334), np.int64(374), np.int64(570)] | MASE=8.6996 | CRPS=76.618363
-    Seed  5191 | cols=[np.int64(171), np.int64(455), np.int64(505), np.int64(529), np.int64(556), np.int64(618), np.int64(685), np.int64(724)] | MASE=10.5047 | CRPS=198.821755
-    Seed  5734 | cols=[np.int64(136), np.int64(146), np.int64(186), np.int64(287), np.int64(360), np.int64(510), np.int64(612), np.int64(613)] | MASE=10.3686 | CRPS=232.710007
-  MASE=10.4506±1.3627  CRPS=172.247287       -1196.6%
-
-────────────────────────────────────────────────────────────
-  📡  fred_md  (pred_len=12)
-  N_total=107 | test_windows=1
-Download fred_md_dataset.zip:: 168kB [00:00, 620kB/s]
-creating json files: 100%|██████████| 107/107 [00:00<00:00, 100131.76it/s]
-    Seed  7270 | cols=[np.int64(5), np.int64(27), np.int64(38), np.int64(41), np.int64(76), np.int64(82), np.int64(91), np.int64(105)] | MASE=10.1734 | CRPS=11980.926056
-    Seed   860 | cols=[np.int64(39), np.int64(50), np.int64(75), np.int64(85), np.int64(89), np.int64(93), np.int64(94), np.int64(99)] | MASE=7.1145 | CRPS=54095.305846
-    Seed  5390 | cols=[np.int64(0), np.int64(3), np.int64(4), np.int64(12), np.int64(31), np.int64(46), np.int64(51), np.int64(77)] | MASE=11.6624 | CRPS=23371.430944
-    Seed  5191 | cols=[np.int64(23), np.int64(62), np.int64(69), np.int64(71), np.int64(73), np.int64(82), np.int64(90), np.int64(98)] | MASE=7.2740 | CRPS=84.783545
-    Seed  5734 | cols=[np.int64(18), np.int64(20), np.int64(25), np.int64(38), np.int64(49), np.int64(67), np.int64(80), np.int64(84)] | MASE=5.8014 | CRPS=10144.731740
-  MASE=8.4052±3.0071  CRPS=19935.435626       -109.6%
-
-────────────────────────────────────────────────────────────
-  📡  car_parts_without_missing  (pred_len=12)
-  N_total=2674 | test_windows=1
-Download car_parts_dataset_without_missing_values.zip:: 40.0kB [00:00, 165kB/s]
-creating json files: 100%|██████████| 2674/2674 [00:00<00:00, 11200.52it/s]
-    Seed  7270 | cols=[np.int64(135), np.int64(140), np.int64(706), np.int64(979), np.int64(1073), np.int64(1902), np.int64(2204), np.int64(2333)] | MASE=3.6473 | CRPS=0.907099
-    Seed   860 | cols=[np.int64(987), np.int64(1309), np.int64(1902), np.int64(2252), np.int64(2391), np.int64(2461), np.int64(2551), np.int64(2671)] | MASE=6.0386 | CRPS=1.437461
-    Seed  5390 | cols=[np.int64(2), np.int64(84), np.int64(108), np.int64(339), np.int64(819), np.int64(1165), np.int64(1307), np.int64(1994)] | MASE=4.1138 | CRPS=0.453857
-    Seed  5191 | cols=[np.int64(597), np.int64(1592), np.int64(1763), np.int64(1854), np.int64(1951), np.int64(2164), np.int64(2402), np.int64(2533)] | MASE=3.7247 | CRPS=1.003384
-    Seed  5734 | cols=[np.int64(475), np.int64(510), np.int64(652), np.int64(1007), np.int64(1258), np.int64(1789), np.int64(2139), np.int64(2149)] | MASE=11.6208 | CRPS=1.075398
-  MASE=5.8290±4.1978  CRPS=0.975440       -635.5%
-
-────────────────────────────────────────────────────────────
-  📡  traffic  (pred_len=24)
-  N_total=6034 | test_windows=1
-    Seed  7270 | cols=[np.int64(305), np.int64(317), np.int64(1595), np.int64(2212), np.int64(2424), np.int64(4292), np.int64(4980), np.int64(5268)] | MASE=4.2682 | CRPS=0.049303
-    Seed   860 | cols=[np.int64(2227), np.int64(2958), np.int64(4294), np.int64(5090), np.int64(5398), np.int64(5403), np.int64(5559), np.int64(5762)] | MASE=3.5956 | CRPS=0.056083
-    Seed  5390 | cols=[np.int64(6), np.int64(191), np.int64(245), np.int64(767), np.int64(1850), np.int64(2629), np.int64(2950), np.int64(4503)] | MASE=3.6612 | CRPS=0.051301
-    Seed  5191 | cols=[np.int64(1348), np.int64(3595), np.int64(3981), np.int64(4187), np.int64(4409), np.int64(4889), np.int64(5428), np.int64(5721)] | MASE=4.3701 | CRPS=0.039377
-    Seed  5734 | cols=[np.int64(1073), np.int64(1152), np.int64(1474), np.int64(2276), np.int64(2841), np.int64(4043), np.int64(4829), np.int64(4858)] | MASE=5.6620 | CRPS=0.059253
-  MASE=4.3114±1.0322  CRPS=0.051063       -60.3%
-
-────────────────────────────────────────────────────────────
-  📡  ercot  (pred_len=24)
-  ⏭️  Skip: PKL not found at /content/SC-Mamba/data/real_val_datasets/ercot_nopad_512.pkl
-      Run: python data/scripts/store_real_datasets.py
-
-────────────────────────────────────────────────────────────
-  📡  exchange_rate  (pred_len=30)
-  ⏭️  Skip: PKL not found at /content/SC-Mamba/data/real_val_datasets/exchange_rate_nopad_512.pkl
-      Run: python data/scripts/store_real_datasets.py
-
-────────────────────────────────────────────────────────────
-  📡  tourism_monthly  (pred_len=24)
-  ⏭️  Skip: PKL not found at /content/SC-Mamba/data/real_val_datasets/tourism_monthly_nopad_512.pkl
-      Run: python data/scripts/store_real_datasets.py
-
-────────────────────────────────────────────────────────────
-  📡  tourism_quarterly  (pred_len=8)
-  ⏭️  Skip: PKL not found at /content/SC-Mamba/data/real_val_datasets/tourism_quarterly_nopad_512.pkl
-      Run: python data/scripts/store_real_datasets.py
-
-────────────────────────────────────────────────────────────
-  📡  cif_2016  (pred_len=12)
-  ⏭️  Skip: PKL not found at /content/SC-Mamba/data/real_val_datasets/cif_2016_nopad_512.pkl
-      Run: python data/scripts/store_real_datasets.py
-
-────────────────────────────────────────────────────────────
-  📡  m1_monthly  (pred_len=18)
-  ⏭️  Skip: PKL not found at /content/SC-Mamba/data/real_val_datasets/m1_monthly_nopad_512.pkl
-      Run: python data/scripts/store_real_datasets.py
-
-────────────────────────────────────────────────────────────
-  📡  m1_quarterly  (pred_len=8)
-  ⏭️  Skip: PKL not found at /content/SC-Mamba/data/real_val_datasets/m1_quarterly_nopad_512.pkl
-      Run: python data/scripts/store_real_datasets.py
-
-────────────────────────────────────────────────────────────
-  📡  nn5_weekly  (pred_len=8)
-  N_total=111 | test_windows=1
-Download nn5_weekly_dataset.zip:: 64.0kB [00:00, 192kB/s]
-creating json files: 100%|██████████| 111/111 [00:00<00:00, 85019.68it/s]
-    Seed  7270 | cols=[np.int64(5), np.int64(28), np.int64(39), np.int64(42), np.int64(78), np.int64(85), np.int64(95), np.int64(109)] | MASE=20.4510 | CRPS=86.520513
-    Seed   860 | cols=[np.int64(40), np.int64(52), np.int64(78), np.int64(88), np.int64(93), np.int64(97), np.int64(98), np.int64(103)] | MASE=19.8407 | CRPS=70.527373
-    Seed  5390 | cols=[np.int64(0), np.int64(3), np.int64(4), np.int64(13), np.int64(32), np.int64(48), np.int64(53), np.int64(80)] | MASE=19.9005 | CRPS=86.831560
-    Seed  5191 | cols=[np.int64(24), np.int64(64), np.int64(72), np.int64(74), np.int64(76), np.int64(85), np.int64(94), np.int64(102)] | MASE=17.8215 | CRPS=73.448834
-    Seed  5734 | cols=[np.int64(19), np.int64(21), np.int64(26), np.int64(40), np.int64(51), np.int64(70), np.int64(83), np.int64(88)] | MASE=20.1628 | CRPS=69.653737
-  MASE=19.6353±1.2943  CRPS=77.396404       -1863.5%
-
-────────────────────────────────────────────────────────────
-  📡  covid_deaths  (pred_len=30)
-  N_total=266 | test_windows=1
-Download covid_deaths_dataset.zip:: 32.0kB [00:00, 94.4kB/s]
-creating json files: 100%|██████████| 266/266 [00:00<00:00, 143073.21it/s]
-    Seed  7270 | cols=[np.int64(13), np.int64(69), np.int64(96), np.int64(104), np.int64(189), np.int64(214), np.int64(230), np.int64(264)] | MASE=40.6316 | CRPS=804.063771
-    Seed   860 | cols=[np.int64(98), np.int64(128), np.int64(188), np.int64(219), np.int64(232), np.int64(236), np.int64(241), np.int64(251)] | MASE=72.7015 | CRPS=490.837084
-    Seed  5390 | cols=[np.int64(0), np.int64(8), np.int64(10), np.int64(32), np.int64(80), np.int64(115), np.int64(129), np.int64(196)] | MASE=38.0153 | CRPS=182.884089
-    Seed  5191 | cols=[np.int64(59), np.int64(157), np.int64(174), np.int64(181), np.int64(189), np.int64(211), np.int64(234), np.int64(249)] | MASE=41.6218 | CRPS=48.686664
-    Seed  5734 | cols=[np.int64(46), np.int64(50), np.int64(64), np.int64(98), np.int64(124), np.int64(174), np.int64(208), np.int64(212)] | MASE=36.9450 | CRPS=1615.577594
-  MASE=45.9830±18.6942  CRPS=628.409840       -482.1%
-
-==========================================================================================
-Dataset                                 MASE (mean±CI)         CRPS        MAE    vs Baseline
-──────────────────────────────────────────────────────────────────────────────────────────
-nn5_daily_without_missing                4.3008±0.4096      12.6521    17.3341        -275.9%
-hospital                                10.4506±1.3627     172.2473   283.8144       -1196.6%
-fred_md                                  8.4052±3.0071   19935.4356 28679.7552        -109.6%
-car_parts_without_missing                5.8290±4.1978       0.9754     0.5240        -635.5%
-traffic                                  4.3114±1.0322       0.0511     0.0477         -60.3%
-nn5_weekly                              19.6353±1.2943      77.3964   127.6027       -1863.5%
-covid_deaths                           45.9830±18.6942     628.4098   994.1044        -482.1%
-──────────────────────────────────────────────────────────────────────────────────────────
-BEAT BASELINE : 0/7  |  COVERAGE: 7/15  |  SKIPPED: 8
-==========================================================================================
-
-✅ 02_test_zeroshot_multi.py v6 complete.
+KeyboardInterrupt: 
