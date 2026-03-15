@@ -138,48 +138,6 @@ BASE_CONFIG = {
 }
 
 
-
-config = {**BASE_CONFIG}
-# =====================================================================
-# 1. Verify real validation datasets exist (pkl files)
-# =====================================================================
-REAL_VAL_DIR = os.path.join(PROJECT_ROOT, 'data', 'real_val_datasets')
-os.makedirs(REAL_VAL_DIR, exist_ok=True)
-
-# Check which datasets are needed for real_test_datasets
-real_test_ds = config.get('real_test_datasets', [])
-padded = 'pad' if False else 'nopad'  # matches real_data_args.yaml pad=false
-MAX_LEN = 512
-
-missing = []
-for ds in real_test_ds:
-    pkl_name = f'{ds}_{padded}_{MAX_LEN}.pkl'
-    pkl_path = os.path.join(REAL_VAL_DIR, pkl_name)
-    if os.path.exists(pkl_path):
-        size_mb = os.path.getsize(pkl_path) / (1024*1024)
-        print(f'  ✅ {ds:30s} → {pkl_name} ({size_mb:.1f} MB)')
-    else:
-        missing.append(ds)
-        print(f'  ❌ {ds:30s} → MISSING')
-
-if missing:
-    print(f'\n🔄 Generating {len(missing)} missing dataset(s) from GluonTS...')
-    print('   This downloads from AWS and converts to pkl. May take 1-5 min per dataset.')
-    !python data/scripts/store_real_datasets.py
-    # Verify again
-    for ds in missing:
-        pkl_path = os.path.join(REAL_VAL_DIR, f'{ds}_{padded}_{MAX_LEN}.pkl')
-        if os.path.exists(pkl_path):
-            print(f'  ✅ {ds} → OK')
-        else:
-            print(f'  ⚠️  {ds} → STILL MISSING. Check store_real_datasets.py output above.')
-else:
-    print(f'\n✅ All {len(real_test_ds)} real validation datasets found.')
-
-
-# =====================================================================
-# 2. RUN TRAINING in EXPERIMENTS setups
-# =====================================================================
 for dataset_name, exp_cfg in EXPERIMENTS.items():
     print(f"\n{'='*65}")
     print(f"🚀 CROSS-ASSET TRAINING: {dataset_name.upper()}")
@@ -190,6 +148,7 @@ for dataset_name, exp_cfg in EXPERIMENTS.items():
     print(f"   num_epochs    : {BASE_CONFIG['num_epochs']}  (train from scratch)")
     print(f"{'='*65}")
 
+    config = {**BASE_CONFIG}
     # Build final config by merging BASE + experiment-specific keys
     config['num_assets']          = exp_cfg['num_assets']
     config['sub_day']             = exp_cfg['sub_day']
@@ -215,6 +174,7 @@ for dataset_name, exp_cfg in EXPERIMENTS.items():
         **BASE_CONFIG['prior_config'],
         'prior_mix_frac': exp_cfg['prior_mix_frac'],
     }
+    
 
     # Write config to file
     config_path = f'{PROJECT_ROOT}/core/config.{config["version"]}.yaml'
@@ -222,6 +182,47 @@ for dataset_name, exp_cfg in EXPERIMENTS.items():
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
     print(f"📝 Config saved: {config_path}")
 
+
+    # =====================================================================
+    # 1. Verify real validation datasets exist (pkl files)
+    # =====================================================================
+    REAL_VAL_DIR = os.path.join(PROJECT_ROOT, 'data', 'real_val_datasets')
+    os.makedirs(REAL_VAL_DIR, exist_ok=True)
+
+    # Check which datasets are needed for real_test_datasets
+    real_test_ds = config.get('real_test_datasets', [])
+    padded = 'pad' if False else 'nopad'  # matches real_data_args.yaml pad=false
+    MAX_LEN = 512
+
+    missing = []
+    for ds in real_test_ds:
+        pkl_name = f'{ds}_{padded}_{MAX_LEN}.pkl'
+        pkl_path = os.path.join(REAL_VAL_DIR, pkl_name)
+        if os.path.exists(pkl_path):
+            size_mb = os.path.getsize(pkl_path) / (1024*1024)
+            print(f'  ✅ {ds:30s} → {pkl_name} ({size_mb:.1f} MB)')
+        else:
+            missing.append(ds)
+            print(f'  ❌ {ds:30s} → MISSING')
+
+    if missing:
+        print(f'\n🔄 Generating {len(missing)} missing dataset(s) from GluonTS...')
+        print('   This downloads from AWS and converts to pkl. May take 1-5 min per dataset.')
+        !python data/scripts/store_real_datasets.py
+        # Verify again
+        for ds in missing:
+            pkl_path = os.path.join(REAL_VAL_DIR, f'{ds}_{padded}_{MAX_LEN}.pkl')
+            if os.path.exists(pkl_path):
+                print(f'  ✅ {ds} → OK')
+            else:
+                print(f'  ⚠️  {ds} → STILL MISSING. Check store_real_datasets.py output above.')
+    else:
+        print(f'\n✅ All {len(real_test_ds)} real validation datasets found.')
+
+
+    # =====================================================================
+    # 2. RUN TRAINING in EXPERIMENTS setups
+    # =====================================================================
     # Launch training — stream logs live
     cmd = ['python', f'{PROJECT_ROOT}/core/train.py', '-c', config_path]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)

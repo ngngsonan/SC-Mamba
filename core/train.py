@@ -23,6 +23,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import wandb
 import torchmetrics
 import yaml
+import math
 import argparse
 import torch
 import torch.nn as nn
@@ -258,6 +259,25 @@ def train_model(config):
         initial_epoch = ckpt['epoch'] + 1
         best_val_loss = ckpt.get('best_val_loss', float('inf'))
         best_real_mase = ckpt.get('best_real_mase', float('inf'))
+
+        # ── Force-override spectral params with config values ─────────
+        # Why: load_state_dict() silently overwrites log_alpha and tau with
+        # checkpoint values (e.g. alpha=1.0), which makes Mask Sparsity
+        # mathematically 0% (sigmoid floor = 0.119 >> threshold 0.01).
+        # This block ensures config-driven spectral params always take priority.
+        spectral_cfg = config.get('spectral_config', {})
+        if spectral_cfg and hasattr(model, 'spectral_layer'):
+            layer = model.spectral_layer
+            if 'alpha_init' in spectral_cfg:
+                new_log_alpha = math.log(spectral_cfg['alpha_init'])
+                old_alpha = torch.exp(layer.log_alpha).item()
+                layer.log_alpha.data.fill_(new_log_alpha)
+                print(f"   🔧 Override log_alpha: {old_alpha:.2f} → {spectral_cfg['alpha_init']:.2f}")
+            if 'tau_init' in spectral_cfg:
+                old_tau = layer.tau.item()
+                layer.tau.data.fill_(spectral_cfg['tau_init'])
+                print(f"   🔧 Override tau: {old_tau:.4f} → {spectral_cfg['tau_init']:.4f}")
+
         print(f'   ▶ Resuming from epoch {initial_epoch}, best_val_loss={best_val_loss:.4f}, best_real_mase={best_real_mase:.4f}')
     else:
         if config['continue_training']:
