@@ -160,9 +160,17 @@ class SpectralVariationalLayer(nn.Module):
     Phase 1 & Phase 2 Cross-Asset Graph Interaction Layer.
     Executes a continuous-prior Causal Fourier filter across the Asset dimension.
     """
-    def __init__(self, d_model):
+    def __init__(self, d_model, spectral_config=None):
         super().__init__()
         self.d_model = d_model
+        
+        if spectral_config is None:
+            spectral_config = {}
+        
+        tau_init = spectral_config.get('tau_init', 2.0)
+        alpha_init = spectral_config.get('alpha_init', 10.0)
+        # log_alpha = ln(alpha)
+        log_alpha_init = math.log(alpha_init)
         
         # Variational inference MLPs mapping Complex spectrum to mu and sigma
         # We double the dim because RFFT produces complex numbers (Real, Imag)
@@ -180,20 +188,12 @@ class SpectralVariationalLayer(nn.Module):
             nn.Linear(d_model, complex_dim)
         )
         
-        # Learnable causal cut-off threshold τ — initialized at 2.0 so the filter
-        # starts with high sparsity to enforce filtering early in training.
-        self.tau = nn.Parameter(torch.tensor(2.0))
+        # Learnable causal cut-off threshold τ — initialized at tau_init.
+        self.tau = nn.Parameter(torch.tensor(tau_init))
 
-        # α controls the steepness of the sigmoid approximating a hard step-function.
-        # DESIGN CHOICE: Made learnable (nn.Parameter) rather than hard-coded at 50.
-        # Rationale: hard α=50 causes sigmoid saturation early in training → gradient≈0
-        # through the mask → τ cannot update. Starting at α=10 keeps the mask moderately
-        # sharp: sigmoid(-10*2) ≈ 2e-9 for zero-amplitude bins (well below 0.01 threshold),
-        # while sigmoid(10*(amplitude-2)) for amplitude>tau remains close to 1.
-        # This ensures Mask Sparsity metric is responsive from epoch 1.
         # Previous α=1.0 caused sigmoid floor of 0.119, making sparsity always 0%.
         # Clamped in forward() to [0.5, 50] to prevent degenerate solutions.
-        self.log_alpha = nn.Parameter(torch.tensor(2.3026))  # exp(2.3026) ≈ 10.0 initial alpha
+        self.log_alpha = nn.Parameter(torch.tensor(log_alpha_init))
         
     def forward(self, Z_real, N_assets):
         """
@@ -299,7 +299,7 @@ class SCMamba_Forecaster(nn.Module):
     Main Pipeline Wrapper combining Mamba4Cast backbone and SpectralVariationalLayer.
     Produces both Point Estimate (\mu) and Uncertainty (\sigma^2) for NLL loss.
     """
-    def __init__(self, N_assets=1, ssm_config=None):
+    def __init__(self, N_assets=1, ssm_config=None, spectral_config=None):
         super().__init__()
         self.N_assets = N_assets
         
@@ -313,7 +313,7 @@ class SCMamba_Forecaster(nn.Module):
         if ssm_config.get('global_residual', False):
             token_embed_len = token_embed_len * 2
             
-        self.spectral_layer = SpectralVariationalLayer(d_model=token_embed_len)
+        self.spectral_layer = SpectralVariationalLayer(d_model=token_embed_len, spectral_config=spectral_config)
         
         # Stochastic Prediction Heads
         self.mu_head = nn.Linear(token_embed_len, 1)

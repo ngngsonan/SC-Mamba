@@ -83,6 +83,11 @@ BASE_CONFIG = {
     'multipoint'       : True,
     'sample_multi_pred': 0.3,
     'diag_prints'      : True,
+    'nll_detach'       : True,      # Prevent Variance Starvation (detached sigma2/mu grads)
+    'spectral_config'  : {
+        'tau_init'     : 1.0,       # Initial Gumbel-Softmax temperature
+        'alpha_init'   : 10.0,      # Initial mask density (log_alpha ≈ 2.3)
+    },
 
     # Checkpoint
     'model_prefix'    : CHECKPOINT_DIR,
@@ -193,6 +198,11 @@ for dataset_name, exp_cfg in EXPERIMENTS.items():
     config['beta_kl']             = exp_cfg['beta_kl']
     config['beta_anneal_epochs']  = exp_cfg['beta_anneal_epochs']
     config['gamma_sparsity']      = exp_cfg.get('gamma_sparsity', 0.0)
+    config['nll_detach']          = exp_cfg.get('nll_detach', BASE_CONFIG['nll_detach'])
+    config['spectral_config']      = {
+        **BASE_CONFIG['spectral_config'],
+        **exp_cfg.get('spectral_config', {})
+    }
     config['training_rounds']     = exp_cfg['training_rounds']
     config['version']             = f'v_multi_{dataset_name}'
 

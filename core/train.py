@@ -42,7 +42,7 @@ from data.data_provider.multivariate_loader import create_multivariate_real_dl
 from utils import SMAPEMetric, generate_model_save_name, avoid_constant_inputs
 from torch.optim.lr_scheduler import CosineAnnealingLR, CosineAnnealingWarmRestarts
 
-def nll_loss(mu, sigma2, target):
+def nll_loss(mu, sigma2, target, detach=True):
     """
     Negative Log-Likelihood with Detached Gradient (prevents Variance Starvation).
 
@@ -67,10 +67,16 @@ def nll_loss(mu, sigma2, target):
     sigma2_v = sigma2[valid_mask]
     target_v = target[valid_mask]
     
-    # Detached: mu gradient not amplified by 1/sigma2 (prevents variance starvation)
-    loss_mu = 0.5 * ((target_v - mu_v) ** 2) / sigma2_v.detach()
-    # Detached: sigma2 gradient not corrupted by local mu errors (stable calibration)
-    loss_sigma = 0.5 * torch.log(2 * np.pi * sigma2_v) + 0.5 * ((target_v - mu_v.detach()) ** 2) / sigma2_v
+    if detach:
+        # Detached: mu gradient not amplified by 1/sigma2 (prevents variance starvation)
+        loss_mu = 0.5 * ((target_v - mu_v) ** 2) / sigma2_v.detach()
+        # Detached: sigma2 gradient not corrupted by local mu errors (stable calibration)
+        loss_sigma = 0.5 * torch.log(2 * np.pi * sigma2_v) + 0.5 * ((target_v - mu_v.detach()) ** 2) / sigma2_v
+    else:
+        # Standard Gaussian NLL (Classic behavior)
+        loss_mu = 0.5 * ((target_v - mu_v) ** 2) / sigma2_v
+        loss_sigma = 0.5 * torch.log(2 * np.pi * sigma2_v)
+        
     return (loss_mu + loss_sigma).mean()
 
 
@@ -184,7 +190,8 @@ def train_model(config):
 
     model = SCMamba_Forecaster(
         N_assets=config['num_assets'],
-        ssm_config={**base_model_configs, **ssm_cfg}
+        ssm_config={**base_model_configs, **ssm_cfg},
+        spectral_config=config.get('spectral_config', {})
     ).to(device)
     print("Using SCMamba_Forecaster (Spectral Variational Graph)")
     # Assuming your train_loader and test_loader are already defined
@@ -300,7 +307,8 @@ def train_model(config):
                 torch.cuda.empty_cache()
             model = SCMamba_Forecaster(
                 N_assets=_actual_N_post,
-                ssm_config={**base_model_configs, **ssm_cfg}
+                ssm_config={**base_model_configs, **ssm_cfg},
+                spectral_config=config.get('spectral_config', {})
             ).to(device)
             if config['lr_scheduler'] == "cosine":
                 optimizer = optim.AdamW(model.parameters(), lr=config["initial_lr"])
@@ -456,7 +464,12 @@ def train_model(config):
                 scaled_target = (target - output['scale'][0].squeeze(-1)) / output['scale'][1].squeeze(-1)
 
             # Calculate Loss Components
-            nll_loss_val = nll_loss(output['mu'], output['sigma2'], scaled_target.float())
+            nll_loss_val = nll_loss(
+                output['mu'], 
+                output['sigma2'], 
+                scaled_target.float(),
+                detach=config.get('nll_detach', True)
+            )
             kl_divergence = output['kl_loss']
 
             # beta_kl annealing: ramp 0 → beta_kl_target over the first half of training.
@@ -608,7 +621,12 @@ def train_model(config):
                     scaled_target = (target - output['scale'][0].squeeze(-1)) / output['scale'][1].squeeze(-1)
                 
                 # Validation Loss (NLL + KL + Sparsity) — mirrors training objective
-                val_nll = nll_loss(output['mu'], output['sigma2'], scaled_target.float()).item()
+                val_nll = nll_loss(
+                    output['mu'], 
+                    output['sigma2'], 
+                    scaled_target.float(),
+                    detach=config.get('nll_detach', True)
+                ).item()
                 _val_mm = output['spectral_stats']['mask_mean']
                 _val_mm_val = _val_mm.item() if isinstance(_val_mm, torch.Tensor) else _val_mm
                 val_loss = val_nll + beta * output['kl_loss'].item() + gamma * _val_mm_val
