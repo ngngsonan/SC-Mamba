@@ -124,15 +124,21 @@ for gluonts_key, pred_len, freq, name, domain in selected:
                         'freq': freq, 'pred_len': pred_len, 'status': 'PLACEHOLDER', 'MASE': None})
         continue
 
+    mase_val = metrics.get("mase")
+    mcrps_val = metrics.get("mcrps", metrics.get("crps_scaled"))
+    
+    mase_str = f"{mase_val:.4f}" if isinstance(mase_val, (int, float)) else "?"
+    mcrps_str = f"{mcrps_val:.4f}" if isinstance(mcrps_val, (int, float)) else "?"
+
     results.append({
         'dataset': name, 'key': gluonts_key, 'domain': domain,
         'freq': freq, 'pred_len': pred_len, 'status': 'OK',
-        'MASE': metrics.get('mase'), 'MAE': metrics.get('mae'),
+        'MASE': mase_val, 'MAE': metrics.get('mae'),
         'RMSE': metrics.get('rmse'), 'sMAPE': metrics.get('smape'),
         'NLL': metrics.get('nll'), 'CRPS': metrics.get('crps'),
-        'mCRPS': metrics.get('mcrps', metrics.get('crps_scaled', None)), # Fallback cho tương thích code cũ
+        'mCRPS': mcrps_val, 
     })
-    print(f'✅ [{domain[:15]:15s}] {name[:20]:20s} MASE={metrics.get("mase","?"):.4f}  mCRPS={metrics.get("mcrps","?"):.4f}')
+    print(f'✅ [{domain[:15]:15s}] {name[:20]:20s} MASE={mase_str}  mCRPS={mcrps_str}')
 
 # Lập bảng tổng kết
 df = pd.DataFrame(results)

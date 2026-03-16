@@ -92,8 +92,14 @@ def evaluate_model(
         'NLL'    : round(nll_,   4),
         'mCRPS'  : round(mcrps_, 4),
     }
-    print(f'  MASE={mase_:.4f} | MAE={mae_:.4f} | RMSE={rmse_:.4f} | '
-          f'SMAPE={smape_:.4f} | NLL={nll_:.4f} | mCRPS={mcrps_:.4f}')
+    mase_val = result.get("MASE")
+    mcrps_val = result.get("mCRPS")
+    
+    mase_str = f"{mase_val:.4f}" if isinstance(mase_val, (int, float)) else "?"
+    mcrps_str = f"{mcrps_val:.4f}" if isinstance(mcrps_val, (int, float)) else "?"
+
+    print(f'  MASE={mase_str} | MAE={result.get("MAE","?")} | RMSE={result.get("RMSE","?")} | '
+          f'SMAPE={result.get("SMAPE","?")} | NLL={result.get("NLL","?")} | mCRPS={mcrps_str}')
     return result
 
 
