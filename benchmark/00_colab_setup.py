@@ -21,7 +21,9 @@ from google.colab import drive
 drive.mount('/content/drive')
 
 !git clone https://github.com/ngngsonan/SC-Mamba.git /content/SC-Mamba 2>/dev/null || echo 'Repo already cloned'
-!cd /content/SC-Mamba && git pull
+
+%cd /content/SC-Mamba
+!git pull
 
 
 import os, sys

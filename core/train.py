@@ -739,19 +739,19 @@ def train_model(config):
             res_dict = {
                 'real_dataset_metrics': {
                     'mase': {}, 'mae': {}, 'rmse': {}, 'smape': {},
-                    'nll': {}, 'crps': {},   # Probabilistic metrics unique to SC-Mamba
+                    'nll': {}, 'crps': {}, 'mcrps': {},
                 },
                 'epoch': epoch
             }
             for real_dataset in config['real_test_datasets']:
                 print(f'Evaluating on real dataset: {real_dataset}')
-                real_mase, real_mae, real_rmse, real_smape, real_nll, real_crps = validate_on_real_dataset(
+                real_mase, real_mae, real_rmse, real_smape, real_nll, real_crps, real_mcrps = validate_on_real_dataset(
                     real_dataset, model, device, config['scaler'], subday=config["sub_day"]
                 )
                 print(
                     f"MASE: {real_mase:.4f}, MAE: {real_mae:.4f}, "
                     f"RMSE: {real_rmse:.4f}, SMAPE: {real_smape:.4f}, "
-                    f"NLL: {real_nll:.4f}, CRPS: {real_crps:.4f}"
+                    f"NLL: {real_nll:.4f}, CRPS: {real_crps:.4f}, mCRPS: {real_mcrps:.4f}"
                 )
                 res_dict['real_dataset_metrics']['mase'][real_dataset] = real_mase
                 res_dict['real_dataset_metrics']['mae'][real_dataset] = real_mae
@@ -759,6 +759,8 @@ def train_model(config):
                 res_dict['real_dataset_metrics']['smape'][real_dataset] = real_smape
                 res_dict['real_dataset_metrics']['nll'][real_dataset] = real_nll
                 res_dict['real_dataset_metrics']['crps'][real_dataset] = real_crps
+                res_dict['real_dataset_metrics']['mcrps'] = res_dict['real_dataset_metrics'].get('mcrps', {})
+                res_dict['real_dataset_metrics']['mcrps'][real_dataset] = real_mcrps
                 if config["wandb"]:
                     wandb.log(res_dict)
 

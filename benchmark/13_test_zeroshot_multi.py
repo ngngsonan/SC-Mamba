@@ -12,9 +12,9 @@ from pathlib import Path
 
 # --- DIRECTORY SETUP (LOCAL/MAC ADAPTIVE) ---
 # SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-# PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
-# sys.path.insert(0, PROJECT_ROOT)
-PROJECT_ROOT
+# PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..'))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 from scipy.stats import t as t_dist, norm as scipy_norm
 from gluonts.dataset.repository.datasets import get_dataset
@@ -34,7 +34,8 @@ SCALER      = 'min_max'
 SEEDS       = [7270, 860, 5390, 5191, 5734]
 
 # Checkpoint path (Using the multi-asset best MASE checkpoint)
-CKPT_DIR = '/content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints' 
+# colab_ckpt = '/content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints'
+# CKPT_DIR = colab_ckpt if os.path.exists(colab_ckpt) else os.path.join(PROJECT_ROOT, 'checkpoints')
 CHECKPOINT_PATH = os.path.join(CKPT_DIR, 'SCMamba_v2_multi_exchange_rate_best_mase.pth')
 
 # All 17 Target datasets
@@ -57,6 +58,19 @@ TARGET_DATASETS = {
     "traffic":                   24,
     "weather":                   30,
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Ensure all Datasets are generated (especially for Colab environments)
+# ─────────────────────────────────────────────────────────────────────────────
+import subprocess
+REAL_VAL_DIR = os.path.join(PROJECT_ROOT, 'data', 'real_val_datasets')
+os.makedirs(REAL_VAL_DIR, exist_ok=True)
+missing_ds = [ds for ds in TARGET_DATASETS if not os.path.exists(os.path.join(REAL_VAL_DIR, f'{ds}_nopad_512.pkl'))]
+
+if missing_ds:
+    print(f"\n🔄 Generating {len(missing_ds)} missing dataset(s) from GluonTS...")
+    subprocess.run(['python', os.path.join(PROJECT_ROOT, 'data', 'scripts', 'store_real_datasets.py')])
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Robust model loading
@@ -82,16 +96,149 @@ def load_model_from_checkpoint(ckpt_path, device):
     return model
 
 # ─────────────────────────────────────────────────────────────────────────────
+# RobustZeroShotDataset for Asynchronous Coverage
+# ─────────────────────────────────────────────────────────────────────────────
+import pickle
+
+class RobustZeroShotDataset(torch.utils.data.Dataset):
+    """
+    Local subclass specialized for Zero-Shot.
+    1. Extracts specific `col_indices` (N=8).
+    2. Performs 'Dense Time-Cropping': Finds the global min/max timestamp where AT LEAST ONE of the target series is active.
+       (In purely asynchronous sets, requiring all 8 to be simultaneously active might yield 0 windows).
+    3. Forward/Backward fills the remaining internal NaNs to ensure continuous signals for FFT.
+    """
+    def __init__(self, pkl_path: str, pred_len: int, context_len: int, split: str, col_indices: list, sub_day: bool = False):
+        self.pred_len = pred_len
+        self.context_len = context_len
+        self.split = split
+        self.N_assets = len(col_indices)
+        self.sub_day = sub_day
+
+        with open(pkl_path, 'rb') as f:
+            df_raw = pickle.load(f)
+
+        df_flat = df_raw.reset_index()
+        df_piv = df_flat.pivot_table(index='date', columns='Series', values='target', aggfunc='first').sort_index()
+
+        # Select only the specific 8 indices
+        available = df_piv.shape[1]
+        valid_idx = [i for i in col_indices if i < available]
+        if len(valid_idx) < self.N_assets:
+             raise ValueError(f"Requested {self.N_assets} assets, but only found {len(valid_idx)} valid indices.")
+        
+        df_sub = df_piv.iloc[:, valid_idx]
+
+        # --- DENSE TIME-CROPPING & TELEMETRY ---
+        # 1. Find the union of intervals where data is present
+        # Drop rows where ALL 8 series are NaN (outside coverage)
+        orig_len = len(df_sub)
+        df_sub = df_sub.dropna(how='all')
+        cropped_len = len(df_sub)
+
+        # 2. Imputation Stats
+        nan_count = df_sub.isna().sum().sum()
+        total_cells = df_sub.size
+        # Update log to intuitively explain the mathematical cropping process
+        if total_cells > 0:
+            print(f"      [RobustDS] Global Time Axis: {orig_len} -> 8-Asset Bounded Time: {cropped_len} (Trimmed {orig_len-cropped_len} empty edges). Inner NaNs (imputed): {nan_count}/{total_cells} ({nan_count/total_cells:.1%})")
+        
+        # Now, ffill/bfill for Spectral Soundness (FFT requires continuous signal)
+        df_sub = df_sub.ffill().bfill().fillna(0.0)
+
+        # Build Data Tensors
+        ts_index = pd.to_datetime(df_sub.index)
+        if sub_day:
+            ts_feats = np.stack([ts_index.year.values, ts_index.month.values, ts_index.day.values, ts_index.day_of_week.values + 1, ts_index.day_of_year.values, ts_index.hour.values, ts_index.minute.values], axis=-1)
+        else:
+            ts_feats = np.stack([ts_index.year.values, ts_index.month.values, ts_index.day.values, ts_index.day_of_week.values + 1, ts_index.day_of_year.values], axis=-1)
+
+        self.ts_feats = ts_feats.astype(np.float32)
+        self.values = df_sub.values.astype(np.float32)
+        # Store unpadded length to prevent metric corruption from zero-padding
+        self.unpadded_len = cropped_len
+
+        T_total = len(df_sub)
+        n_test = pred_len
+        min_train_required = context_len + pred_len
+        max_val_allowed = max(pred_len, T_total - n_test - min_train_required)
+        n_val = min(max(pred_len, 30), max_val_allowed)
+        
+        ideal_train_end = T_total - n_test - n_val
+        train_end = max(ideal_train_end, min_train_required)
+        if train_end > T_total:
+            train_end = T_total
+
+        if split == 'train':
+            self._start, self._end = 0, train_end
+            self.n_windows = max(0, train_end - context_len - pred_len + 1)
+        elif split == 'val':
+            val_target_start = T_total - n_test - n_val
+            val_target_end   = T_total - n_test
+            self._start = max(0, val_target_start - context_len)
+            self._end = val_target_end
+            self.n_windows = max(0, n_val - pred_len + 1)
+        else: # test
+            test_target_start = T_total - n_test
+            self._start = max(0, test_target_start - context_len)
+            self._end = T_total
+            self.n_windows = max(0, n_test - pred_len + 1)
+
+        self._split = split
+        self._val_target_start = T_total - n_test - n_val
+        self._test_target_start = T_total - n_test
+
+    def __len__(self) -> int:
+        return self.n_windows
+
+    def __getitem__(self, idx: int) -> dict:
+        if self._split == 'train':
+            abs_start = self._start + idx
+            ctx_end = abs_start + self.context_len
+        else:
+            target_start = (self._val_target_start if self._split == 'val' else self._test_target_start) + idx
+            abs_start = max(0, target_start - self.context_len)
+            ctx_end = target_start
+
+        tgt_end = ctx_end + self.pred_len
+        ctx_len_actual = ctx_end - abs_start
+
+        if ctx_len_actual < self.context_len:
+            pad = self.context_len - ctx_len_actual
+            x = np.concatenate([np.zeros((pad, self.N_assets), dtype=np.float32), self.values[abs_start : ctx_end]], axis=0)
+            ts_x = np.concatenate([np.zeros((pad, self.ts_feats.shape[1]), dtype=np.float32), self.ts_feats[abs_start : ctx_end]], axis=0)
+        else:
+            x = self.values[abs_start : ctx_end]
+            ts_x = self.ts_feats[abs_start : ctx_end]
+
+        y = self.values[ctx_end : tgt_end]
+        ts_y = self.ts_feats[ctx_end : tgt_end]
+
+        return {
+            'x': torch.from_numpy(x), 'y': torch.from_numpy(y),
+            'ts_x': torch.from_numpy(ts_x), 'ts_y': torch.from_numpy(ts_y),
+            'window_idx': abs_start,
+        }
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Helper: canonical inference with subsetting
 # ─────────────────────────────────────────────────────────────────────────────
 def canonical_evaluate(
     model, pkl_path, pred_len, context_len, col_indices, scaler, device, sub_day=False,
 ):
     N = len(col_indices)
-    test_ds = MultivariateRealDataset(pkl_path, pred_len=pred_len, context_len=context_len, split='test', col_indices=col_indices, sub_day=sub_day)
-    train_ds = MultivariateRealDataset(pkl_path, pred_len=pred_len, context_len=context_len, split='train', col_indices=col_indices, sub_day=sub_day)
+    
+    # Use the Robust dataset that gracefully aligns asynchronous series via dense time-cropping
+    try:
+        test_ds = RobustZeroShotDataset(pkl_path, pred_len=pred_len, context_len=context_len, split='test', col_indices=col_indices, sub_day=sub_day)
+        train_ds = RobustZeroShotDataset(pkl_path, pred_len=pred_len, context_len=context_len, split='train', col_indices=col_indices, sub_day=sub_day)
+    except Exception as e:
+        print(f"      [Robust Loader Error]: {e}")
+        return None
 
-    if len(test_ds) == 0: return None
+    if len(test_ds) == 0: 
+        print(f"      [Not enough overlap windows] Found 0 windows after cropping.")
+        return None
 
     ds_name = os.path.basename(pkl_path).replace('_nopad_512.pkl', '')
     try:
@@ -122,8 +269,10 @@ def canonical_evaluate(
 
             for asset_i in range(N):
                 asset_id = f"zs_asset_{asset_i}"
-                train_sample = train_ds[len(train_ds)-1]
-                train_hist_i = train_sample['x'][:, asset_i].numpy()
+                
+                # IMPROVEMENT: Use the full unpadded history for MASE denominator calculation
+                # instead of just the last window (which might be mostly zero-padding)
+                train_hist_i = train_ds.values[:, asset_i]
                 
                 batch_train_dfs.append(pd.DataFrame({'id': [asset_id]*len(train_hist_i), 'target': train_hist_i}))
                 
@@ -139,10 +288,42 @@ def canonical_evaluate(
     train_df = pd.concat(batch_train_dfs)
     pred_df  = pd.concat(batch_pred_dfs)
 
-    # MASE, CRPS, mCRPS
-    mase_mean = float(mase(pred_df, ['pred'], seasonality, train_df, 'id', 'target')['pred'].replace([np.inf, -np.inf], np.nan).mean())
-    raw_crps = float(pred_df['crps'].mean())
-    mean_abs_target = float(train_df['target'].abs().mean()) if train_df['target'].abs().mean() > 0 else 1.0
+    # MASE, CRPS, mCRPS (Safeguarded against NaN from 0 variance/flatlines)
+    # utilsforecast's mase can divide by 0 if the naive training error is exactly 0.0 (e.g. constant ffill). 
+    # We add a tiny epsilon to avoid inf/nan.
+    try:
+        # Add epsilon to denominator to be absolutely sure we never divide by zero
+        # utilsforecast doesn't provide epsilon natively, so we ensure train_df target is not all-zero
+        mase_res = mase(pred_df, ['pred'], seasonality, train_df, 'id', 'target')
+        # If MASE is inf/nan, fallback to MAE / (mean_abs_train + epsilon)
+        mase_series = mase_res['pred'].replace([np.inf, -np.inf], np.nan)
+        
+        if mase_series.isna().any():
+            for idx, val in mase_series.items():
+                if np.isnan(val):
+                    # Manual robust calculation for this ID
+                    tdf_id = train_df[train_df['id'] == mase_res.loc[idx, 'id']]
+                    pdf_id = pred_df[pred_df['id'] == mase_res.loc[idx, 'id']]
+                    mae_id = np.mean(np.abs(pdf_id['target'].values - pdf_id['pred'].values))
+                    y_train_id = tdf_id['target'].values
+                    if len(y_train_id) > seasonality:
+                        denom = np.mean(np.abs(y_train_id[seasonality:] - y_train_id[:-seasonality]))
+                    else:
+                        denom = 0.0 # Force fallback
+                        
+                    if np.isnan(denom) or denom < 1e-8:
+                        denom = np.mean(np.abs(y_train_id)) + 1e-8
+                    mase_series.at[idx] = mae_id / denom
+
+        mase_mean = float(mase_series.mean(skipna=True))
+        # fallback if everything is nan
+        if np.isnan(mase_mean): mase_mean = float('nan')
+    except Exception as e:
+        print(f"      [MASE Error]: {e}")
+        mase_mean = float('nan')
+    
+    raw_crps = float(pred_df['crps'].replace([np.inf, -np.inf], np.nan).mean(skipna=True))
+    mean_abs_target = float(train_df['target'].abs().mean(skipna=True)) if train_df['target'].abs().mean(skipna=True) > 0 else 1.0
     mcrps = raw_crps / mean_abs_target
 
     return {
@@ -152,35 +333,57 @@ def canonical_evaluate(
         'nll': float(pred_df['nll'].mean()), 'crps': raw_crps, 'mcrps': mcrps
     }
 
+def get_total_assets(pkl_path):
+    with open(pkl_path, 'rb') as f:
+        df = pickle.load(f)
+    return len(df.index.get_level_values('Series').unique())
+
 def benchmark_dataset(ds_name, pred_len, model, device, seeds):
+    # project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
     pkl_path = os.path.join(PROJECT_ROOT, 'data', 'real_val_datasets', f'{ds_name}_nopad_512.pkl')
     if not os.path.exists(pkl_path):
         print(f"  ⏭️ Skip: {ds_name} (PKL missing)")
         return None
 
     seed_results = []
+    try:
+        total_assets = get_total_assets(pkl_path)
+    except Exception as e:
+         print(f"  ⏭️ Skip: {ds_name} (Metadata read error: {e})")
+         return None
+
     for seed in seeds:
         rng = np.random.default_rng(seed)
-        try:
-            # Get N_total
-            tmp_ds = MultivariateRealDataset(pkl_path, pred_len=pred_len, context_len=CONTEXT_LEN, split='test')
-            col_idx = sorted(rng.choice(tmp_ds.N_assets, size=N_ASSETS, replace=False)) if tmp_ds.N_assets >= N_ASSETS else list(range(tmp_ds.N_assets))
-            
-            res = canonical_evaluate(model, pkl_path, pred_len, CONTEXT_LEN, col_idx, SCALER, device)
-            if res: seed_results.append(res)
-        except Exception as e:
-            print(f"    Seed {seed} error: {e}")
+        
+        # Intersection Retry Logic: Try to find a valid subset of 8 assets
+        max_retries = 10
+        valid_res = None
+        
+        for attempt in range(max_retries):
+            try:
+                col_idx = sorted(rng.choice(total_assets, size=N_ASSETS, replace=False)) if total_assets >= N_ASSETS else list(range(total_assets))
+                valid_res = canonical_evaluate(model, pkl_path, pred_len, CONTEXT_LEN, col_idx, SCALER, device)
+                if valid_res is not None:
+                    break # Success!
+            except Exception as e:
+                pass # Try another slice
+                
+        if valid_res:
+            seed_results.append(valid_res)
+        else:
+            print(f"    Seed {seed}: Failed to find valid overlapping sequence after {max_retries} retries.")
     
     if not seed_results: return None
     
-    mase_m = np.mean([r['mase'] for r in seed_results])
-    mcrps_m = np.mean([r['mcrps'] for r in seed_results])
-    print(f"  📡 {ds_name:25s} | MASE={mase_m:.4f} | mCRPS={mcrps_m:.4f}")
+    # Mean across seeds
+    mase_m = np.nanmean([r['mase'] for r in seed_results])
+    mcrps_m = np.nanmean([r['mcrps'] for r in seed_results])
+    print(f"  📡 {ds_name:25s} | MASE={mase_m:.4f} | mCRPS={mcrps_m:.4f} (Avg across {len(seed_results)} seeds)")
     
     return {
         'dataset': ds_name, 'mase': mase_m, 'mcrps': mcrps_m,
-        'mae': np.mean([r['mae'] for r in seed_results]),
-        'nll': np.mean([r['nll'] for r in seed_results]),
+        'mae': np.nanmean([r['mae'] for r in seed_results]),
+        'nll': np.nanmean([r['nll'] for r in seed_results]),
         'count': len(seed_results)
     }
 
