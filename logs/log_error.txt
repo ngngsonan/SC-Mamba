@@ -1,4 +1,4 @@
- 
+
 =================================================================
 🚀 CROSS-ASSET TRAINING: NN5_DAILY_WITHOUT_MISSING
    num_assets    : 111
@@ -127,7 +127,7 @@ Using SCMamba_Forecaster (Spectral Variational Graph)
   periodic checkpoint: /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints/SCMamba_v2_multi_nn5_daily_without_missing.pth
        exists?      : False
   final checkpoint  : /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints/SCMamba_v2_multi_nn5_daily_without_missing_Final.pth
-       exists?      : False
+       exists?      : True
 ============================================================
 
 Starting fresh training (no checkpoint loaded)
@@ -142,42 +142,68 @@ Waiting for first batch from dataloader...
   [DIAG:spectral] N_assets=111, freq_bins=56, mask=[0.0000, 1.0000], alpha=10.00, tau=1.0000, KL=58542.152344, fft_identity_diff=0.00e+00
   [DIAG] history=torch.Size([111, 256]), pred_len=56, mu=torch.Size([111, 56]), sigma2 range=[0.000001, 525.8330], kl=58542.152344
   [DIAG:pad] seq_len=312 → padded=512 (pad=200, waste=39.1%), chunk_size=256
-  [DIAG:spectral] N_assets=111, freq_bins=56, mask=[0.0000, 1.0000], alpha=10.00, tau=1.0000, KL=110603.804688, fft_identity_diff=0.00e+00
+  [DIAG:spectral] N_assets=111, freq_bins=56, mask=[0.0000, 1.0000], alpha=10.00, tau=1.0000, KL=110603.734375, fft_identity_diff=0.00e+00
   [DIAG:pad] seq_len=312 → padded=512 (pad=200, waste=39.1%), chunk_size=256
-  [DIAG:spectral] N_assets=111, freq_bins=56, mask=[0.0000, 1.0000], alpha=10.00, tau=0.9999, KL=2064.019043, fft_identity_diff=0.00e+00
-Epoch: 1, Batch: 10, Total Loss: 4076801693.6408, NLL: 4076801665.8738, KL: 17484.2947 From torchmetric: 20466506.0000
+  [DIAG:spectral] N_assets=111, freq_bins=56, mask=[0.0000, 1.0000], alpha=10.00, tau=0.9999, KL=2064.036865, fft_identity_diff=0.00e+00
+Epoch: 1, Batch: 10, Total Loss: 4097123747.3894, NLL: 4097123719.6120, KL: 17491.9895 From torchmetric: 20496176.0000
 ============Validation==================
-Epoch: 1, SC. Validation Loss: 2.9418 From torchmetric: 5833.4902
+Epoch: 1, SC. Validation Loss: 3.0192 From torchmetric: 7290.1006
 Time taken for epoch: 0.6 mins 35 secs.
   ╔══════════════ EPOCH 1 DIAGNOSTICS ══════════════╗
   ║ LR           = 5.00e-05
   ║ beta (KL wt) = 0.0180  (annealed)
   ║ gamma (spar) = 0.0090  (constant)
-  ║ avg NLL      = 4076801665.8738 (lower is better)
-  ║ avg KL       = 17484.2947 (lower is better)
-  ║ avg KL×beta  = 314.717304
-  ║ avg Loss     = 4076801693.6408 (lower is better)
-  ║ avg GradNorm = 2460854535588.9844
-  ║ sigma2 range = [0.000001, 1337.4755]
+  ║ avg NLL      = 4097123719.6120 (lower is better)
+  ║ avg KL       = 17491.9895 (lower is better)
+  ║ avg KL×beta  = 314.855811
+  ║ avg Loss     = 4097123747.3894 (lower is better)
+  ║ avg GradNorm = 2471414471222.6313
+  ║ sigma2 range = [0.000001, 1337.4816]
   ║ avg Tau      = 0.9999  (constant) | Alpha = 10.00 (learned, lower=sparser)
   ║ avg MaskMean = 0.6132  (lower is better, dense fraction)
   ║ Mask Sparsity= 13.35% (higher is better, % < 0.01)
-  ║ S2 Collapse  = 28.77% (<1e-3, lower is better)
-  ║ val_loss     =  2.9418 (lower is better)
+  ║ S2 Collapse  = 28.59% (<1e-3, lower is better)
+  ║ val_loss     =  3.0192 (lower is better)
   ║ best_val     =     inf (lower is better)
   ╚═══════════════════════════════════════════════════════╝
-  🏆 Best checkpoint saved (epoch 1, val_loss=2.9418)
+  🏆 Best checkpoint saved (epoch 1, val_loss=3.0192)
 Evaluating on real dataset: nn5_daily_without_missing
   [eval_pipeline] Multivariate aligned eval: N_assets=111 on nn5_daily_without_missing
-Traceback (most recent call last):
-  File "/content/SC-Mamba/./core/train.py", line 860, in <module>
-    train_model(config)
-  File "/content/SC-Mamba/./core/train.py", line 748, in train_model
-    real_mase, real_mae, real_rmse, real_smape, real_nll, real_crps = validate_on_real_dataset(
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-ValueError: too many values to unpack (expected 6)
+MASE: 19.0393, MAE: 80.4610, RMSE: 81.2761, SMAPE: 0.6776, NLL: 5.8854, CRPS: 49.2087, mCRPS: 2.5897
+  [DIAG:mase] median_real_mase=19.0393 (over 1 datasets, 0 excluded inf/nan)
+  🎯 Best MASE checkpoint saved (epoch 1, median_mase=19.0393)
+============Training==================
+Waiting for first batch from dataloader...
+  [DIAG] history=torch.Size([111, 256]), pred_len=12, mu=torch.Size([111, 12]), sigma2 range=[4.042635, 40.6257], kl=54.458618
+Epoch: 2, Batch: 10, Total Loss: 2.6769, NLL: 2.4736, KL: 8.9571 From torchmetric: 13312.5723
+============Validation==================
+Epoch: 2, SC. Validation Loss: 1.0409 From torchmetric: 349.7272
+Time taken for epoch: 0.3 mins 19 secs.
+  ╔══════════════ EPOCH 2 DIAGNOSTICS ══════════════╗
+  ║ LR           = 3.00e-05
+  ║ beta (KL wt) = 0.0380  (annealed)
+  ║ gamma (spar) = 0.0190  (constant)
+  ║ avg NLL      =  2.4736 (lower is better)
+  ║ avg KL       =  8.9571 (lower is better)
+  ║ avg KL×beta  = 0.340368
+  ║ avg Loss     =  2.6769 (lower is better)
+  ║ avg GradNorm = 236.6205
+  ║ sigma2 range = [0.050146, 40.6257]
+  ║ avg Tau      = 1.0000  (constant) | Alpha = 10.00 (learned, lower=sparser)
+  ║ avg MaskMean = 0.6131  (lower is better, dense fraction)
+  ║ Mask Sparsity= 13.35% (higher is better, % < 0.01)
+  ║ S2 Collapse  =  0.00% (<1e-3, lower is better)
+  ║ val_loss     =  1.0409 (lower is better)
+  ║ best_val     =  3.0192 (lower is better)
+  ╚═══════════════════════════════════════════════════════╝
+  🏆 Best checkpoint saved (epoch 2, val_loss=1.0409)
+Evaluating on real dataset: nn5_daily_without_missing
+  [eval_pipeline] Multivariate aligned eval: N_assets=111 on nn5_daily_without_missing
+MASE: 3.6604, MAE: 15.4907, RMSE: 17.2311, SMAPE: 0.3104, NLL: 4.2593, CRPS: 10.4858, mCRPS: 0.5518
+  [DIAG:mase] median_real_mase=3.6604 (over 1 datasets, 0 excluded inf/nan)
+  🎯 Best MASE checkpoint saved (epoch 2, median_mase=3.6604)
 
-❌ nn5_daily_without_missing training failed (exit code 1). Continuing to next...
+✅ nn5_daily_without_missing training complete.
 
 [OOM Prevention] Cool down and release memory...
 
@@ -306,11 +332,11 @@ Using SCMamba_Forecaster (Spectral Variational Graph)
   model_prefix      : /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints
   continue_training : False
   best  checkpoint  : /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints/SCMamba_v2_multi_nn5_weekly_best.pth
-       exists?      : False
+       exists?      : True
   periodic checkpoint: /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints/SCMamba_v2_multi_nn5_weekly.pth
        exists?      : False
   final checkpoint  : /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints/SCMamba_v2_multi_nn5_weekly_Final.pth
-       exists?      : False
+       exists?      : True
 ============================================================
 
 Starting fresh training (no checkpoint loaded)
@@ -326,9 +352,9 @@ Waiting for first batch from dataloader...
   [DIAG] history=torch.Size([111, 96]), pred_len=8, mu=torch.Size([111, 8]), sigma2 range=[0.000001, 182.6330], kl=41072.296875
 ============Validation==================
   [DIAG:pad] seq_len=104 → padded=128 (pad=24, waste=18.8%), chunk_size=64
-  [DIAG:spectral] N_assets=111, freq_bins=56, mask=[0.0000, 1.0000], alpha=10.00, tau=1.0000, KL=166174851072.000000, fft_identity_diff=0.00e+00
-Epoch: 1, SC. Validation Loss: 1.9170 From torchmetric: 22889.4941
-Time taken for epoch: 0.4 mins 22 secs.
+  [DIAG:spectral] N_assets=111, freq_bins=56, mask=[0.0000, 1.0000], alpha=10.00, tau=1.0000, KL=166176669696.000000, fft_identity_diff=0.00e+00
+Epoch: 1, SC. Validation Loss: 1.9170 From torchmetric: 22889.4902
+Time taken for epoch: 0.3 mins 18 secs.
   ╔══════════════ EPOCH 1 DIAGNOSTICS ══════════════╗
   ║ LR           = 5.00e-05
   ║ beta (KL wt) = 0.0000  (annealed)
@@ -337,7 +363,7 @@ Time taken for epoch: 0.4 mins 22 secs.
   ║ avg KL       = 41072.2969 (lower is better)
   ║ avg KL×beta  = 0.000000
   ║ avg Loss     = 7478536192.0000 (lower is better)
-  ║ avg GradNorm = 7603879411712.0000
+  ║ avg GradNorm = 7603881508864.0000
   ║ sigma2 range = [0.000001, 182.6330]
   ║ avg Tau      = 1.0000  (constant) | Alpha = 10.00 (learned, lower=sparser)
   ║ avg MaskMean = 0.6140  (lower is better, dense fraction)
@@ -350,22 +376,39 @@ Time taken for epoch: 0.4 mins 22 secs.
 Evaluating on real dataset: nn5_weekly
   [eval_pipeline] Multivariate aligned eval: N_assets=111 on nn5_weekly
   [DIAG:pad] seq_len=264 → padded=320 (pad=56, waste=17.5%), chunk_size=64
-  [DIAG:spectral] N_assets=111, freq_bins=56, mask=[0.0000, 1.0000], alpha=10.00, tau=1.0000, KL=188181364736.000000, fft_identity_diff=0.00e+00
+  [DIAG:spectral] N_assets=111, freq_bins=56, mask=[0.0000, 1.0000], alpha=10.00, tau=1.0000, KL=188179759104.000000, fft_identity_diff=0.00e+00
+MASE: 21.9021, MAE: 151.4935, RMSE: 239.0774, SMAPE: 0.3744, NLL: 6.7173, CRPS: 122.1209, mCRPS: 2.3213
+  [DIAG:mase] median_real_mase=21.9021 (over 1 datasets, 0 excluded inf/nan)
+  🎯 Best MASE checkpoint saved (epoch 1, median_mase=21.9021)
+============Training==================
+Waiting for first batch from dataloader...
+  [DIAG] history=torch.Size([111, 96]), pred_len=8, mu=torch.Size([111, 8]), sigma2 range=[0.000001, 8625.6670], kl=166473089024.000000
+============Validation==================
+Epoch: 2, SC. Validation Loss: 2619591231.4615 From torchmetric: 23123.4004
+Time taken for epoch: 0.0 mins 1 secs.
+  ╔══════════════ EPOCH 2 DIAGNOSTICS ══════════════╗
+  ║ LR           = 3.00e-05
+  ║ beta (KL wt) = 0.0200  (annealed)
+  ║ gamma (spar) = 0.0100  (constant)
+  ║ avg NLL      = 275332537822216192.0000 (lower is better)
+  ║ avg KL       = 166473089024.0000 (lower is better)
+  ║ avg KL×beta  = 3329461780.480000
+  ║ avg Loss     = 275332537822216192.0000 (lower is better)
+  ║ avg GradNorm =     inf
+  ║ sigma2 range = [0.000001, 8625.6670]
+  ║ avg Tau      = 0.9999  (constant) | Alpha = 10.00 (learned, lower=sparser)
+  ║ avg MaskMean = 0.6132  (lower is better, dense fraction)
+  ║ Mask Sparsity= 13.34% (higher is better, % < 0.01)
+  ║ S2 Collapse  = 62.50% (<1e-3, lower is better)
+  ║ val_loss     = 2619591231.4615 (lower is better)
+  ║ best_val     =  1.9170 (lower is better)
+  ╚═══════════════════════════════════════════════════════╝
+Evaluating on real dataset: nn5_weekly
+  [eval_pipeline] Multivariate aligned eval: N_assets=111 on nn5_weekly
+MASE: 23.3577, MAE: 161.8294, RMSE: 238.7836, SMAPE: 0.4024, NLL: 6.7533, CRPS: 124.8012, mCRPS: 2.3723
+  [DIAG:mase] median_real_mase=23.3577 (over 1 datasets, 0 excluded inf/nan)
 
-Download nn5_weekly_dataset.zip:: 0.00B [00:00, ?B/s]
-Download nn5_weekly_dataset.zip:: 64.0kB [00:01, 47.1kB/s]
-
-creating json files:   0%|          | 0/111 [00:00<?, ?it/s]
-creating json files: 100%|██████████| 111/111 [00:00<00:00, 122646.93it/s]
-Traceback (most recent call last):
-  File "/content/SC-Mamba/./core/train.py", line 860, in <module>
-    train_model(config)
-  File "/content/SC-Mamba/./core/train.py", line 748, in train_model
-    real_mase, real_mae, real_rmse, real_smape, real_nll, real_crps = validate_on_real_dataset(
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-ValueError: too many values to unpack (expected 6)
-
-❌ nn5_weekly training failed (exit code 1). Continuing to next...
+✅ nn5_weekly training complete.
 
 [OOM Prevention] Cool down and release memory...
 
@@ -494,11 +537,11 @@ Using SCMamba_Forecaster (Spectral Variational Graph)
   model_prefix      : /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints
   continue_training : False
   best  checkpoint  : /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints/SCMamba_v2_multi_covid_deaths_best.pth
-       exists?      : False
+       exists?      : True
   periodic checkpoint: /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints/SCMamba_v2_multi_covid_deaths.pth
        exists?      : False
   final checkpoint  : /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints/SCMamba_v2_multi_covid_deaths_Final.pth
-       exists?      : False
+       exists?      : True
 ============================================================
 
 Starting fresh training (no checkpoint loaded)
@@ -516,7 +559,7 @@ Waiting for first batch from dataloader...
   [DIAG:pad] seq_len=181 → padded=256 (pad=75, waste=29.3%), chunk_size=128
   [DIAG:spectral] N_assets=266, freq_bins=134, mask=[0.0000, 1.0000], alpha=10.00, tau=1.0000, KL=1167346684846407680.000000, fft_identity_diff=0.00e+00
 Epoch: 1, SC. Validation Loss: 17.5775 From torchmetric: 544666368.0000
-Time taken for epoch: 0.5 mins 29 secs.
+Time taken for epoch: 0.4 mins 24 secs.
   ╔══════════════ EPOCH 1 DIAGNOSTICS ══════════════╗
   ║ LR           = 5.00e-05
   ║ beta (KL wt) = 0.0000  (annealed)
@@ -538,12 +581,6 @@ Time taken for epoch: 0.5 mins 29 secs.
 Evaluating on real dataset: covid_deaths
 reading data from /content/SC-Mamba/data/real_val_datasets/covid_deaths_nopad_512.pkl
 test 266
-
-Download covid_deaths_dataset.zip:: 0.00B [00:00, ?B/s]
-Download covid_deaths_dataset.zip:: 32.0kB [00:01, 27.5kB/s]
-
-creating json files:   0%|          | 0/266 [00:00<?, ?it/s]
-creating json files: 100%|██████████| 266/266 [00:00<00:00, 98846.89it/s]
 7
   [DIAG:pad] seq_len=212 → padded=256 (pad=44, waste=17.2%), chunk_size=128
   [DIAG:pad] seq_len=212 → padded=256 (pad=44, waste=17.2%), chunk_size=128
@@ -811,15 +848,43 @@ creating json files: 100%|██████████| 266/266 [00:00<00:00, 
   [DIAG:pad] seq_len=212 → padded=256 (pad=44, waste=17.2%), chunk_size=128
   [DIAG:pad] seq_len=212 → padded=256 (pad=44, waste=17.2%), chunk_size=128
   [DIAG:pad] seq_len=212 → padded=256 (pad=44, waste=17.2%), chunk_size=128
-Traceback (most recent call last):
-  File "/content/SC-Mamba/./core/train.py", line 860, in <module>
-    train_model(config)
-  File "/content/SC-Mamba/./core/train.py", line 748, in train_model
-    real_mase, real_mae, real_rmse, real_smape, real_nll, real_crps = validate_on_real_dataset(
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-ValueError: too many values to unpack (expected 6)
+MASE: 38.8574, MAE: 3100.8093, RMSE: 3134.4868, SMAPE: 0.9757, NLL: 524326.0625, CRPS: 2117.2807, mCRPS: 2.5946
+  [DIAG:mase] median_real_mase=38.8574 (over 1 datasets, 0 excluded inf/nan)
+  🎯 Best MASE checkpoint saved (epoch 1, median_mase=38.8574)
+============Training==================
+Waiting for first batch from dataloader...
+  [DIAG:pad] seq_len=155 → padded=256 (pad=101, waste=39.5%), chunk_size=128
+  [DIAG:spectral] N_assets=266, freq_bins=134, mask=[0.0000, 1.0000], alpha=10.00, tau=1.0000, KL=171188497246322688.000000, fft_identity_diff=0.00e+00
+  [DIAG] history=torch.Size([266, 151]), pred_len=4, mu=torch.Size([266, 4]), sigma2 range=[35516208.000000, 439735552.0000], kl=171188497246322688.000000
+============Validation==================
+Epoch: 2, SC. Validation Loss: 629577136839127.1250 From torchmetric: 1796678272.0000
+Time taken for epoch: 0.1 mins 3 secs.
+  ╔══════════════ EPOCH 2 DIAGNOSTICS ══════════════╗
+  ║ LR           = 3.00e-05
+  ║ beta (KL wt) = 0.0200  (annealed)
+  ║ gamma (spar) = 0.0100  (constant)
+  ║ avg NLL      = 1632064256.0000 (lower is better)
+  ║ avg KL       = 171188497246322688.0000 (lower is better)
+  ║ avg KL×beta  = 3423769944926454.000000
+  ║ avg Loss     = 3423771566276608.0000 (lower is better)
+  ║ avg GradNorm = 7020172286384668672.0000
+  ║ sigma2 range = [35516208.000000, 439735552.0000]
+  ║ avg Tau      = 1.0000  (constant) | Alpha = 10.00 (learned, lower=sparser)
+  ║ avg MaskMean = 0.6185  (lower is better, dense fraction)
+  ║ Mask Sparsity= 13.16% (higher is better, % < 0.01)
+  ║ S2 Collapse  =  0.00% (<1e-3, lower is better)
+  ║ val_loss     = 629577136839127.1250 (lower is better)
+  ║ best_val     = 17.5775 (lower is better)
+  ╚═══════════════════════════════════════════════════════╝
+Evaluating on real dataset: covid_deaths
+reading data from /content/SC-Mamba/data/real_val_datasets/covid_deaths_nopad_512.pkl
+test 266
+7
+MASE: 37.5141, MAE: 2985.3186, RMSE: 3007.0181, SMAPE: 0.9892, NLL: 524325.0625, CRPS: 2015.3762, mCRPS: 2.4697
+  [DIAG:mase] median_real_mase=37.5141 (over 1 datasets, 0 excluded inf/nan)
+  🎯 Best MASE checkpoint saved (epoch 2, median_mase=37.5141)
 
-❌ covid_deaths training failed (exit code 1). Continuing to next...
+✅ covid_deaths training complete.
 
 [OOM Prevention] Cool down and release memory...
 
@@ -827,7 +892,7 @@ ValueError: too many values to unpack (expected 6)
 🚀 CROSS-ASSET TRAINING: HOSPITAL
    num_assets    : 767
    dyn_batch_size: 1
-   chunk_size    : 64
+   chunk_size    : 48
    context_len   : 59 (seq_len=72)
    prior_mix_frac: 0.5  (synthetic 50% + real 50%)
    num_epochs    : 2
@@ -913,7 +978,7 @@ config:
  'spectral_config': {'alpha_init': 10.0, 'tau_init': 1.0},
  'ssm_config': {'bidirectional': False,
                 'block_expansion': 2,
-                'chunk_size': 64,
+                'chunk_size': 48,
                 'd_state': 128,
                 'enc_conv': True,
                 'enc_conv_kernel': 5,
@@ -938,7 +1003,7 @@ config:
  'version': 'v2_multi_hospital',
  'wandb': False}
 cuda device usage (before model load): 0.0
-  [adaptive_chunk] context_len=59 → chunk_size=32 (was 64)
+  [adaptive_chunk] context_len=59 → chunk_size=32 (was 48)
 Using SCMamba_Forecaster (Spectral Variational Graph)
 
 ============================================================
@@ -967,7 +1032,7 @@ Waiting for first batch from dataloader...
   [DIAG:spectral] N_assets=767, freq_bins=384, mask=[0.0000, 1.0000], alpha=10.00, tau=1.0000, KL=inf, fft_identity_diff=0.00e+00
   [DIAG] history=torch.Size([767, 59]), pred_len=12, mu=torch.Size([767, 12]), sigma2 range=[0.000001, 166426879342720051423293093183488.0000], kl=inf
 Traceback (most recent call last):
-  File "/content/SC-Mamba/./core/train.py", line 860, in <module>
+  File "/content/SC-Mamba/./core/train.py", line 862, in <module>
     train_model(config)
   File "/content/SC-Mamba/./core/train.py", line 519, in train_model
     loss.backward()
@@ -1127,7 +1192,7 @@ Using SCMamba_Forecaster (Spectral Variational Graph)
   periodic checkpoint: /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints/SCMamba_v2_multi_fred_md.pth
        exists?      : False
   final checkpoint  : /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints/SCMamba_v2_multi_fred_md_Final.pth
-       exists?      : False
+       exists?      : True
 ============================================================
 
 Starting fresh training (no checkpoint loaded)
@@ -1142,42 +1207,68 @@ Waiting for first batch from dataloader...
   [DIAG:spectral] N_assets=107, freq_bins=54, mask=[0.0000, 1.0000], alpha=10.00, tau=1.0000, KL=20943.683594, fft_identity_diff=0.00e+00
   [DIAG] history=torch.Size([107, 256]), pred_len=12, mu=torch.Size([107, 12]), sigma2 range=[0.000001, 335.1752], kl=20943.683594
   [DIAG:pad] seq_len=268 → padded=512 (pad=244, waste=47.7%), chunk_size=256
-  [DIAG:spectral] N_assets=107, freq_bins=54, mask=[0.0000, 1.0000], alpha=10.00, tau=1.0000, KL=5369597.000000, fft_identity_diff=0.00e+00
+  [DIAG:spectral] N_assets=107, freq_bins=54, mask=[0.0000, 1.0000], alpha=10.00, tau=1.0000, KL=5369458.000000, fft_identity_diff=0.00e+00
   [DIAG:pad] seq_len=268 → padded=512 (pad=244, waste=47.7%), chunk_size=256
-  [DIAG:spectral] N_assets=107, freq_bins=54, mask=[0.0000, 1.0000], alpha=10.00, tau=1.0001, KL=333626.625000, fft_identity_diff=0.00e+00
-Epoch: 1, Batch: 10, Total Loss: 325317776561.1727, NLL: 325317776423.3859, KL: 577017.3078 From torchmetric: 48885953418231808.0000
+  [DIAG:spectral] N_assets=107, freq_bins=54, mask=[0.0000, 1.0000], alpha=10.00, tau=1.0001, KL=333604.593750, fft_identity_diff=0.00e+00
+Epoch: 1, Batch: 10, Total Loss: 325296036962.0863, NLL: 325296036824.1167, KL: 577044.1484 From torchmetric: 48884046452752384.0000
 ============Validation==================
-Epoch: 1, SC. Validation Loss: 5.8743 From torchmetric: 77149184000.0000
-Time taken for epoch: 0.6 mins 37 secs.
+Epoch: 1, SC. Validation Loss: 5.5883 From torchmetric: 79661072384.0000
+Time taken for epoch: 0.7 mins 45 secs.
   ╔══════════════ EPOCH 1 DIAGNOSTICS ══════════════╗
   ║ LR           = 5.00e-05
   ║ beta (KL wt) = 0.0180  (annealed)
   ║ gamma (spar) = 0.0090  (constant)
-  ║ avg NLL      = 325317776423.3859 (lower is better)
-  ║ avg KL       = 577017.3078 (lower is better)
-  ║ avg KL×beta  = 10386.311540
-  ║ avg Loss     = 325317776561.1727 (lower is better)
-  ║ avg GradNorm = 213312633943236.7188
-  ║ sigma2 range = [0.000001, 4722.0527]
+  ║ avg NLL      = 325296036824.1167 (lower is better)
+  ║ avg KL       = 577044.1484 (lower is better)
+  ║ avg KL×beta  = 10386.794671
+  ║ avg Loss     = 325296036962.0863 (lower is better)
+  ║ avg GradNorm = 213301447768333.3125
+  ║ sigma2 range = [0.000001, 4721.9438]
   ║ avg Tau      = 1.0001  (constant) | Alpha = 10.00 (learned, lower=sparser)
   ║ avg MaskMean = 0.6142  (lower is better, dense fraction)
   ║ Mask Sparsity= 13.32% (higher is better, % < 0.01)
-  ║ S2 Collapse  = 32.50% (<1e-3, lower is better)
-  ║ val_loss     =  5.8743 (lower is better)
+  ║ S2 Collapse  = 34.17% (<1e-3, lower is better)
+  ║ val_loss     =  5.5883 (lower is better)
   ║ best_val     =     inf (lower is better)
   ╚═══════════════════════════════════════════════════════╝
-  🏆 Best checkpoint saved (epoch 1, val_loss=5.8743)
+  🏆 Best checkpoint saved (epoch 1, val_loss=5.5883)
 Evaluating on real dataset: fred_md
   [eval_pipeline] Multivariate aligned eval: N_assets=107 on fred_md
-Traceback (most recent call last):
-  File "/content/SC-Mamba/./core/train.py", line 860, in <module>
-    train_model(config)
-  File "/content/SC-Mamba/./core/train.py", line 748, in train_model
-    real_mase, real_mae, real_rmse, real_smape, real_nll, real_crps = validate_on_real_dataset(
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-ValueError: too many values to unpack (expected 6)
+MASE: 10.0064, MAE: 34827.8477, RMSE: 37918.2070, SMAPE: 0.3637, NLL: 6.5687, CRPS: 23385.4833, mCRPS: 0.9000
+  [DIAG:mase] median_real_mase=10.0064 (over 1 datasets, 0 excluded inf/nan)
+  🎯 Best MASE checkpoint saved (epoch 1, median_mase=10.0064)
+============Training==================
+Waiting for first batch from dataloader...
+  [DIAG] history=torch.Size([107, 256]), pred_len=4, mu=torch.Size([107, 4]), sigma2 range=[2.109369, 13.4961], kl=360.211090
+Epoch: 2, Batch: 10, Total Loss: 23104585.9036, NLL: 23104584.1162, KL: 83.0009 From torchmetric: 2032189571072.0000
+============Validation==================
+Epoch: 2, SC. Validation Loss: 2.3350 From torchmetric: 75744575488.0000
+Time taken for epoch: 0.4 mins 23 secs.
+  ╔══════════════ EPOCH 2 DIAGNOSTICS ══════════════╗
+  ║ LR           = 3.00e-05
+  ║ beta (KL wt) = 0.0380  (annealed)
+  ║ gamma (spar) = 0.0190  (constant)
+  ║ avg NLL      = 23104584.1162 (lower is better)
+  ║ avg KL       = 83.0009 (lower is better)
+  ║ avg KL×beta  = 3.154035
+  ║ avg Loss     = 23104585.9036 (lower is better)
+  ║ avg GradNorm = 9619095842.5648
+  ║ sigma2 range = [0.000001, 70.5273]
+  ║ avg Tau      = 1.0002  (constant) | Alpha = 10.00 (learned, lower=sparser)
+  ║ avg MaskMean = 0.6135  (lower is better, dense fraction)
+  ║ Mask Sparsity= 13.36% (higher is better, % < 0.01)
+  ║ S2 Collapse  = 10.83% (<1e-3, lower is better)
+  ║ val_loss     =  2.3350 (lower is better)
+  ║ best_val     =  5.5883 (lower is better)
+  ╚═══════════════════════════════════════════════════════╝
+  🏆 Best checkpoint saved (epoch 2, val_loss=2.3350)
+Evaluating on real dataset: fred_md
+  [eval_pipeline] Multivariate aligned eval: N_assets=107 on fred_md
+MASE: 9.6697, MAE: 33009.5664, RMSE: 35274.7852, SMAPE: 0.3624, NLL: 7.0740, CRPS: 32329.7365, mCRPS: 1.2443
+  [DIAG:mase] median_real_mase=9.6697 (over 1 datasets, 0 excluded inf/nan)
+  🎯 Best MASE checkpoint saved (epoch 2, median_mase=9.6697)
 
-❌ fred_md training failed (exit code 1). Continuing to next...
+✅ fred_md training complete.
 
 [OOM Prevention] Cool down and release memory...
 
@@ -1185,7 +1276,7 @@ ValueError: too many values to unpack (expected 6)
 🚀 CROSS-ASSET TRAINING: CAR_PARTS_WITHOUT_MISSING
    num_assets    : 2674
    dyn_batch_size: 1
-   chunk_size    : 64
+   chunk_size    : 16
    context_len   : 26 (seq_len=39)
    prior_mix_frac: 0.5  (synthetic 50% + real 50%)
    num_epochs    : 2
@@ -1271,7 +1362,7 @@ config:
  'spectral_config': {'alpha_init': 10.0, 'tau_init': 1.0},
  'ssm_config': {'bidirectional': False,
                 'block_expansion': 2,
-                'chunk_size': 64,
+                'chunk_size': 16,
                 'd_state': 128,
                 'enc_conv': True,
                 'enc_conv_kernel': 5,
@@ -1296,7 +1387,6 @@ config:
  'version': 'v2_multi_car_parts_without_missing',
  'wandb': False}
 cuda device usage (before model load): 0.0
-  [adaptive_chunk] context_len=26 → chunk_size=16 (was 64)
 Using SCMamba_Forecaster (Spectral Variational Graph)
 
 ============================================================
@@ -1323,7 +1413,7 @@ cuda device usage (before training start): 92.51513671875
 Waiting for first batch from dataloader...
   [DIAG:pad] seq_len=38 → padded=48 (pad=10, waste=20.8%), chunk_size=16
 Traceback (most recent call last):
-  File "/content/SC-Mamba/./core/train.py", line 860, in <module>
+  File "/content/SC-Mamba/./core/train.py", line 862, in <module>
     train_model(config)
   File "/content/SC-Mamba/./core/train.py", line 464, in train_model
     output = model(data, prediction_length=pred_len)
@@ -1395,7 +1485,7 @@ torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 7.83 GiB. GPU 0 ha
 🚀 CROSS-ASSET TRAINING: TRAFFIC
    num_assets    : 862
    dyn_batch_size: 1
-   chunk_size    : 64
+   chunk_size    : 32
    context_len   : 256 (seq_len=14036)
    prior_mix_frac: 0.5  (synthetic 50% + real 50%)
    num_epochs    : 2
@@ -1481,7 +1571,7 @@ config:
  'spectral_config': {'alpha_init': 10.0, 'tau_init': 1.0},
  'ssm_config': {'bidirectional': False,
                 'block_expansion': 2,
-                'chunk_size': 64,
+                'chunk_size': 32,
                 'd_state': 128,
                 'enc_conv': True,
                 'enc_conv_kernel': 5,
@@ -1506,7 +1596,7 @@ config:
  'version': 'v2_multi_traffic',
  'wandb': False}
 cuda device usage (before model load): 0.0
-  [adaptive_chunk] context_len=256 → chunk_size=256 (was 64)
+  [adaptive_chunk] context_len=256 → chunk_size=256 (was 32)
 Using SCMamba_Forecaster (Spectral Variational Graph)
 
 ============================================================
@@ -1533,7 +1623,7 @@ cuda device usage (before training start): 92.51513671875
 Waiting for first batch from dataloader...
   [DIAG:pad] seq_len=280 → padded=512 (pad=232, waste=45.3%), chunk_size=256
 Traceback (most recent call last):
-  File "/content/SC-Mamba/./core/train.py", line 860, in <module>
+  File "/content/SC-Mamba/./core/train.py", line 862, in <module>
     train_model(config)
   File "/content/SC-Mamba/./core/train.py", line 464, in train_model
     output = model(data, prediction_length=pred_len)
@@ -1598,27 +1688,1164 @@ torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 3.79 GiB. GPU 0 ha
 🚀 CROSS-ASSET TRAINING: M1_MONTHLY
    num_assets    : 617
    dyn_batch_size: 1
-   chunk_size    : 64
+   chunk_size    : 48
    context_len   : 24 (seq_len=42)
    prior_mix_frac: 0.5  (synthetic 50% + real 50%)
    num_epochs    : 2
 =================================================================
 📝 Config saved: ./core/config.v2_multi_m1_monthly.yaml
-  ❌ m1_monthly                     → MISSING
+  ✅ m1_monthly                     → m1_monthly_nopad_512.pkl (0.9 MB)
 
-🔄 Generating 1 missing dataset(s) from GluonTS...
-   This downloads from AWS and converts to pkl. May take 1-5 min per dataset.
-Data generation script encountered an error. Proceeding with caution.
-  ✅ m1_monthly → OK
----------------------------------------------------------------------------
-KeyboardInterrupt                         Traceback (most recent call last)
-/tmp/ipykernel_3588/383413853.py in <cell line: 0>()
-    262     cmd = ['python', f'{PROJECT_ROOT}/core/train.py', '-c', config_path]
-    263     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
---> 264     for line in iter(proc.stdout.readline, ''):
-    265         print(line, end='', flush=True)
-    266     proc.stdout.close()
+✅ Real validation dataset found.
+config:
+{'batch_size': 1,
+ 'beta_anneal_epochs': 10,
+ 'beta_kl': 0.2,
+ 'context_len': 24,
+ 'continue_training': False,
+ 'debugging': False,
+ 'diag_prints': True,
+ 'encoding_dropout': 0.1,
+ 'gamma_sparsity': 0.1,
+ 'handle_constants_model': True,
+ 'initial_lr': 5e-05,
+ 'learning_rate': 1e-05,
+ 'loss': 'nll',
+ 'lr_scheduler': 'cosine',
+ 'max_seq_len': 24,
+ 'min_seq_len': 20,
+ 'model_prefix': '/content/drive/MyDrive/Colab '
+                 'Notebooks/SCMamba/sc_mamba_checkpoints',
+ 'multipoint': True,
+ 'nll_detach': True,
+ 'num_assets': 617,
+ 'num_epochs': 2,
+ 'pred_len': 18,
+ 'pred_len_min': 10,
+ 'pred_len_sample': False,
+ 'prior_config': {'curriculum_learning': False,
+                  'damp_and_spike': False,
+                  'damping_noise_ratio': 0.0,
+                  'fp_options': {'harmonic_rate': 0.75,
+                                 'harmonic_scale_ratio': 0.4,
+                                 'linear_random_walk_frac': 0,
+                                 'scale_noise': [0.6, 0.3],
+                                 'seasonal_only': False,
+                                 'transition_ratio': 0.0,
+                                 'trend_additional': True,
+                                 'trend_exp': False},
+                  'gp_prior_config': {'gaussian_sampling_ratio': 0.2,
+                                      'gaussians_periodic': True,
+                                      'kernel_bank': {'linear_kernel': 1,
+                                                      'matern_kernel': 1.5,
+                                                      'periodic_kernel': 5,
+                                                      'polynomial_kernel': 0,
+                                                      'spectral_mixture_kernel': 0},
+                                      'kernel_periods': [4,
+                                                         5,
+                                                         7,
+                                                         21,
+                                                         24,
+                                                         30,
+                                                         60,
+                                                         120],
+                                      'likelihood_noise_level': 0.4,
+                                      'max_kernels': 6,
+                                      'max_period_ratio': 1.0,
+                                      'noise_level': 'random',
+                                      'peak_spike_ratio': 0.1,
+                                      'periods_per_freq': 0.5,
+                                      'subfreq_ratio': 0.2,
+                                      'use_original_gp': False},
+                  'mixup_prob': 0.0,
+                  'mixup_series': 4,
+                  'prior_mix_frac': 0.5,
+                  'spike_batch_ratio': 0.0,
+                  'spike_noise_ratio': 0.0,
+                  'spike_signal_ratio': 0.0},
+ 'real_test_datasets': ['m1_monthly'],
+ 'real_test_interval': 1,
+ 'real_train_datasets': ['m1_monthly'],
+ 'sample_multi_pred': 0.3,
+ 'scaler': 'min_max',
+ 'seed': 42,
+ 'sin_pos_const': False,
+ 'sin_pos_enc': False,
+ 'spectral_config': {'alpha_init': 10.0, 'tau_init': 1.0},
+ 'ssm_config': {'bidirectional': False,
+                'block_expansion': 2,
+                'chunk_size': 48,
+                'd_state': 128,
+                'enc_conv': True,
+                'enc_conv_kernel': 5,
+                'global_residual': False,
+                'headdim': 128,
+                'in_proj_norm': False,
+                'init_conv_kernel': 5,
+                'init_conv_max_dilation': 3,
+                'init_dil_conv': True,
+                'initial_gelu_flag': True,
+                'linear_seq': 15,
+                'mamba2': True,
+                'norm': True,
+                'norm_type': 'layernorm',
+                'num_encoder_layers': 2,
+                'residual': False,
+                'token_embed_len': 1024},
+ 'sub_day': False,
+ 't_max': -1,
+ 'training_rounds': 10,
+ 'validation_rounds': 5,
+ 'version': 'v2_multi_m1_monthly',
+ 'wandb': False}
+cuda device usage (before model load): 0.0
+Traceback (most recent call last):
+  File "/content/SC-Mamba/./core/train.py", line 862, in <module>
+    train_model(config)
+  File "/content/SC-Mamba/./core/train.py", line 162, in train_model
+    _probe_ds = _MRD(
+                ^^^^^
+  File "/content/SC-Mamba/data/data_provider/multivariate_loader.py", line 89, in __init__
+    raise ValueError(
+ValueError: All series in the dataset were dropped due to excessive NaN values. Check the input PKL file.
 
-/usr/lib/python3.12/codecs.py in decode(self, input, final)
+❌ m1_monthly training failed (exit code 1). Continuing to next...
 
-KeyboardInterrupt: 
+[OOM Prevention] Cool down and release memory...
+
+=================================================================
+🚀 CROSS-ASSET TRAINING: M1_QUARTERLY
+   num_assets    : 203
+   dyn_batch_size: 1
+   chunk_size    : 256
+   context_len   : 31 (seq_len=40)
+   prior_mix_frac: 0.5  (synthetic 50% + real 50%)
+   num_epochs    : 2
+=================================================================
+📝 Config saved: ./core/config.v2_multi_m1_quarterly.yaml
+  ✅ m1_quarterly                   → m1_quarterly_nopad_512.pkl (0.1 MB)
+
+✅ Real validation dataset found.
+config:
+{'batch_size': 1,
+ 'beta_anneal_epochs': 10,
+ 'beta_kl': 0.2,
+ 'context_len': 31,
+ 'continue_training': False,
+ 'debugging': False,
+ 'diag_prints': True,
+ 'encoding_dropout': 0.1,
+ 'gamma_sparsity': 0.1,
+ 'handle_constants_model': True,
+ 'initial_lr': 5e-05,
+ 'learning_rate': 1e-05,
+ 'loss': 'nll',
+ 'lr_scheduler': 'cosine',
+ 'max_seq_len': 31,
+ 'min_seq_len': 20,
+ 'model_prefix': '/content/drive/MyDrive/Colab '
+                 'Notebooks/SCMamba/sc_mamba_checkpoints',
+ 'multipoint': True,
+ 'nll_detach': True,
+ 'num_assets': 203,
+ 'num_epochs': 2,
+ 'pred_len': 8,
+ 'pred_len_min': 10,
+ 'pred_len_sample': False,
+ 'prior_config': {'curriculum_learning': False,
+                  'damp_and_spike': False,
+                  'damping_noise_ratio': 0.0,
+                  'fp_options': {'harmonic_rate': 0.75,
+                                 'harmonic_scale_ratio': 0.4,
+                                 'linear_random_walk_frac': 0,
+                                 'scale_noise': [0.6, 0.3],
+                                 'seasonal_only': False,
+                                 'transition_ratio': 0.0,
+                                 'trend_additional': True,
+                                 'trend_exp': False},
+                  'gp_prior_config': {'gaussian_sampling_ratio': 0.2,
+                                      'gaussians_periodic': True,
+                                      'kernel_bank': {'linear_kernel': 1,
+                                                      'matern_kernel': 1.5,
+                                                      'periodic_kernel': 5,
+                                                      'polynomial_kernel': 0,
+                                                      'spectral_mixture_kernel': 0},
+                                      'kernel_periods': [4,
+                                                         5,
+                                                         7,
+                                                         21,
+                                                         24,
+                                                         30,
+                                                         60,
+                                                         120],
+                                      'likelihood_noise_level': 0.4,
+                                      'max_kernels': 6,
+                                      'max_period_ratio': 1.0,
+                                      'noise_level': 'random',
+                                      'peak_spike_ratio': 0.1,
+                                      'periods_per_freq': 0.5,
+                                      'subfreq_ratio': 0.2,
+                                      'use_original_gp': False},
+                  'mixup_prob': 0.0,
+                  'mixup_series': 4,
+                  'prior_mix_frac': 0.5,
+                  'spike_batch_ratio': 0.0,
+                  'spike_noise_ratio': 0.0,
+                  'spike_signal_ratio': 0.0},
+ 'real_test_datasets': ['m1_quarterly'],
+ 'real_test_interval': 1,
+ 'real_train_datasets': ['m1_quarterly'],
+ 'sample_multi_pred': 0.3,
+ 'scaler': 'min_max',
+ 'seed': 42,
+ 'sin_pos_const': False,
+ 'sin_pos_enc': False,
+ 'spectral_config': {'alpha_init': 10.0, 'tau_init': 1.0},
+ 'ssm_config': {'bidirectional': False,
+                'block_expansion': 2,
+                'chunk_size': 256,
+                'd_state': 128,
+                'enc_conv': True,
+                'enc_conv_kernel': 5,
+                'global_residual': False,
+                'headdim': 128,
+                'in_proj_norm': False,
+                'init_conv_kernel': 5,
+                'init_conv_max_dilation': 3,
+                'init_dil_conv': True,
+                'initial_gelu_flag': True,
+                'linear_seq': 15,
+                'mamba2': True,
+                'norm': True,
+                'norm_type': 'layernorm',
+                'num_encoder_layers': 2,
+                'residual': False,
+                'token_embed_len': 1024},
+ 'sub_day': False,
+ 't_max': -1,
+ 'training_rounds': 10,
+ 'validation_rounds': 5,
+ 'version': 'v2_multi_m1_quarterly',
+ 'wandb': False}
+cuda device usage (before model load): 0.0
+Traceback (most recent call last):
+  File "/content/SC-Mamba/./core/train.py", line 862, in <module>
+    train_model(config)
+  File "/content/SC-Mamba/./core/train.py", line 162, in train_model
+    _probe_ds = _MRD(
+                ^^^^^
+  File "/content/SC-Mamba/data/data_provider/multivariate_loader.py", line 89, in __init__
+    raise ValueError(
+ValueError: All series in the dataset were dropped due to excessive NaN values. Check the input PKL file.
+
+❌ m1_quarterly training failed (exit code 1). Continuing to next...
+
+[OOM Prevention] Cool down and release memory...
+
+=================================================================
+🚀 CROSS-ASSET TRAINING: M3_MONTHLY
+   num_assets    : 1428
+   dyn_batch_size: 1
+   chunk_size    : 32
+   context_len   : 125 (seq_len=144)
+   prior_mix_frac: 0.5  (synthetic 50% + real 50%)
+   num_epochs    : 2
+=================================================================
+📝 Config saved: ./core/config.v2_multi_m3_monthly.yaml
+  ✅ m3_monthly                     → m3_monthly_nopad_512.pkl (2.6 MB)
+
+✅ Real validation dataset found.
+config:
+{'batch_size': 1,
+ 'beta_anneal_epochs': 10,
+ 'beta_kl': 0.2,
+ 'context_len': 125,
+ 'continue_training': False,
+ 'debugging': False,
+ 'diag_prints': True,
+ 'encoding_dropout': 0.1,
+ 'gamma_sparsity': 0.1,
+ 'handle_constants_model': True,
+ 'initial_lr': 5e-05,
+ 'learning_rate': 1e-05,
+ 'loss': 'nll',
+ 'lr_scheduler': 'cosine',
+ 'max_seq_len': 125,
+ 'min_seq_len': 20,
+ 'model_prefix': '/content/drive/MyDrive/Colab '
+                 'Notebooks/SCMamba/sc_mamba_checkpoints',
+ 'multipoint': True,
+ 'nll_detach': True,
+ 'num_assets': 1428,
+ 'num_epochs': 2,
+ 'pred_len': 18,
+ 'pred_len_min': 10,
+ 'pred_len_sample': False,
+ 'prior_config': {'curriculum_learning': False,
+                  'damp_and_spike': False,
+                  'damping_noise_ratio': 0.0,
+                  'fp_options': {'harmonic_rate': 0.75,
+                                 'harmonic_scale_ratio': 0.4,
+                                 'linear_random_walk_frac': 0,
+                                 'scale_noise': [0.6, 0.3],
+                                 'seasonal_only': False,
+                                 'transition_ratio': 0.0,
+                                 'trend_additional': True,
+                                 'trend_exp': False},
+                  'gp_prior_config': {'gaussian_sampling_ratio': 0.2,
+                                      'gaussians_periodic': True,
+                                      'kernel_bank': {'linear_kernel': 1,
+                                                      'matern_kernel': 1.5,
+                                                      'periodic_kernel': 5,
+                                                      'polynomial_kernel': 0,
+                                                      'spectral_mixture_kernel': 0},
+                                      'kernel_periods': [4,
+                                                         5,
+                                                         7,
+                                                         21,
+                                                         24,
+                                                         30,
+                                                         60,
+                                                         120],
+                                      'likelihood_noise_level': 0.4,
+                                      'max_kernels': 6,
+                                      'max_period_ratio': 1.0,
+                                      'noise_level': 'random',
+                                      'peak_spike_ratio': 0.1,
+                                      'periods_per_freq': 0.5,
+                                      'subfreq_ratio': 0.2,
+                                      'use_original_gp': False},
+                  'mixup_prob': 0.0,
+                  'mixup_series': 4,
+                  'prior_mix_frac': 0.5,
+                  'spike_batch_ratio': 0.0,
+                  'spike_noise_ratio': 0.0,
+                  'spike_signal_ratio': 0.0},
+ 'real_test_datasets': ['m3_monthly'],
+ 'real_test_interval': 1,
+ 'real_train_datasets': ['m3_monthly'],
+ 'sample_multi_pred': 0.3,
+ 'scaler': 'min_max',
+ 'seed': 42,
+ 'sin_pos_const': False,
+ 'sin_pos_enc': False,
+ 'spectral_config': {'alpha_init': 10.0, 'tau_init': 1.0},
+ 'ssm_config': {'bidirectional': False,
+                'block_expansion': 2,
+                'chunk_size': 32,
+                'd_state': 128,
+                'enc_conv': True,
+                'enc_conv_kernel': 5,
+                'global_residual': False,
+                'headdim': 128,
+                'in_proj_norm': False,
+                'init_conv_kernel': 5,
+                'init_conv_max_dilation': 3,
+                'init_dil_conv': True,
+                'initial_gelu_flag': True,
+                'linear_seq': 15,
+                'mamba2': True,
+                'norm': True,
+                'norm_type': 'layernorm',
+                'num_encoder_layers': 2,
+                'residual': False,
+                'token_embed_len': 1024},
+ 'sub_day': False,
+ 't_max': -1,
+ 'training_rounds': 10,
+ 'validation_rounds': 5,
+ 'version': 'v2_multi_m3_monthly',
+ 'wandb': False}
+cuda device usage (before model load): 0.0
+Traceback (most recent call last):
+  File "/content/SC-Mamba/./core/train.py", line 862, in <module>
+    train_model(config)
+  File "/content/SC-Mamba/./core/train.py", line 162, in train_model
+    _probe_ds = _MRD(
+                ^^^^^
+  File "/content/SC-Mamba/data/data_provider/multivariate_loader.py", line 89, in __init__
+    raise ValueError(
+ValueError: All series in the dataset were dropped due to excessive NaN values. Check the input PKL file.
+
+❌ m3_monthly training failed (exit code 1). Continuing to next...
+
+[OOM Prevention] Cool down and release memory...
+
+=================================================================
+🚀 CROSS-ASSET TRAINING: M3_QUARTERLY
+   num_assets    : 756
+   dyn_batch_size: 1
+   chunk_size    : 48
+   context_len   : 63 (seq_len=72)
+   prior_mix_frac: 0.5  (synthetic 50% + real 50%)
+   num_epochs    : 2
+=================================================================
+📝 Config saved: ./core/config.v2_multi_m3_quarterly.yaml
+  ✅ m3_quarterly                   → m3_quarterly_nopad_512.pkl (0.5 MB)
+
+✅ Real validation dataset found.
+config:
+{'batch_size': 1,
+ 'beta_anneal_epochs': 10,
+ 'beta_kl': 0.2,
+ 'context_len': 63,
+ 'continue_training': False,
+ 'debugging': False,
+ 'diag_prints': True,
+ 'encoding_dropout': 0.1,
+ 'gamma_sparsity': 0.1,
+ 'handle_constants_model': True,
+ 'initial_lr': 5e-05,
+ 'learning_rate': 1e-05,
+ 'loss': 'nll',
+ 'lr_scheduler': 'cosine',
+ 'max_seq_len': 63,
+ 'min_seq_len': 20,
+ 'model_prefix': '/content/drive/MyDrive/Colab '
+                 'Notebooks/SCMamba/sc_mamba_checkpoints',
+ 'multipoint': True,
+ 'nll_detach': True,
+ 'num_assets': 756,
+ 'num_epochs': 2,
+ 'pred_len': 8,
+ 'pred_len_min': 10,
+ 'pred_len_sample': False,
+ 'prior_config': {'curriculum_learning': False,
+                  'damp_and_spike': False,
+                  'damping_noise_ratio': 0.0,
+                  'fp_options': {'harmonic_rate': 0.75,
+                                 'harmonic_scale_ratio': 0.4,
+                                 'linear_random_walk_frac': 0,
+                                 'scale_noise': [0.6, 0.3],
+                                 'seasonal_only': False,
+                                 'transition_ratio': 0.0,
+                                 'trend_additional': True,
+                                 'trend_exp': False},
+                  'gp_prior_config': {'gaussian_sampling_ratio': 0.2,
+                                      'gaussians_periodic': True,
+                                      'kernel_bank': {'linear_kernel': 1,
+                                                      'matern_kernel': 1.5,
+                                                      'periodic_kernel': 5,
+                                                      'polynomial_kernel': 0,
+                                                      'spectral_mixture_kernel': 0},
+                                      'kernel_periods': [4,
+                                                         5,
+                                                         7,
+                                                         21,
+                                                         24,
+                                                         30,
+                                                         60,
+                                                         120],
+                                      'likelihood_noise_level': 0.4,
+                                      'max_kernels': 6,
+                                      'max_period_ratio': 1.0,
+                                      'noise_level': 'random',
+                                      'peak_spike_ratio': 0.1,
+                                      'periods_per_freq': 0.5,
+                                      'subfreq_ratio': 0.2,
+                                      'use_original_gp': False},
+                  'mixup_prob': 0.0,
+                  'mixup_series': 4,
+                  'prior_mix_frac': 0.5,
+                  'spike_batch_ratio': 0.0,
+                  'spike_noise_ratio': 0.0,
+                  'spike_signal_ratio': 0.0},
+ 'real_test_datasets': ['m3_quarterly'],
+ 'real_test_interval': 1,
+ 'real_train_datasets': ['m3_quarterly'],
+ 'sample_multi_pred': 0.3,
+ 'scaler': 'min_max',
+ 'seed': 42,
+ 'sin_pos_const': False,
+ 'sin_pos_enc': False,
+ 'spectral_config': {'alpha_init': 10.0, 'tau_init': 1.0},
+ 'ssm_config': {'bidirectional': False,
+                'block_expansion': 2,
+                'chunk_size': 48,
+                'd_state': 128,
+                'enc_conv': True,
+                'enc_conv_kernel': 5,
+                'global_residual': False,
+                'headdim': 128,
+                'in_proj_norm': False,
+                'init_conv_kernel': 5,
+                'init_conv_max_dilation': 3,
+                'init_dil_conv': True,
+                'initial_gelu_flag': True,
+                'linear_seq': 15,
+                'mamba2': True,
+                'norm': True,
+                'norm_type': 'layernorm',
+                'num_encoder_layers': 2,
+                'residual': False,
+                'token_embed_len': 1024},
+ 'sub_day': False,
+ 't_max': -1,
+ 'training_rounds': 10,
+ 'validation_rounds': 5,
+ 'version': 'v2_multi_m3_quarterly',
+ 'wandb': False}
+cuda device usage (before model load): 0.0
+Traceback (most recent call last):
+  File "/content/SC-Mamba/./core/train.py", line 862, in <module>
+    train_model(config)
+  File "/content/SC-Mamba/./core/train.py", line 162, in train_model
+    _probe_ds = _MRD(
+                ^^^^^
+  File "/content/SC-Mamba/data/data_provider/multivariate_loader.py", line 89, in __init__
+    raise ValueError(
+ValueError: All series in the dataset were dropped due to excessive NaN values. Check the input PKL file.
+
+❌ m3_quarterly training failed (exit code 1). Continuing to next...
+
+[OOM Prevention] Cool down and release memory...
+
+=================================================================
+🚀 CROSS-ASSET TRAINING: CIF_2016
+   num_assets    : 72
+   dyn_batch_size: 1
+   chunk_size    : 256
+   context_len   : 95 (seq_len=108)
+   prior_mix_frac: 0.5  (synthetic 50% + real 50%)
+   num_epochs    : 2
+=================================================================
+📝 Config saved: ./core/config.v2_multi_cif_2016.yaml
+  ✅ cif_2016                       → cif_2016_nopad_512.pkl (0.1 MB)
+
+✅ Real validation dataset found.
+config:
+{'batch_size': 1,
+ 'beta_anneal_epochs': 10,
+ 'beta_kl': 0.2,
+ 'context_len': 95,
+ 'continue_training': False,
+ 'debugging': False,
+ 'diag_prints': True,
+ 'encoding_dropout': 0.1,
+ 'gamma_sparsity': 0.1,
+ 'handle_constants_model': True,
+ 'initial_lr': 5e-05,
+ 'learning_rate': 1e-05,
+ 'loss': 'nll',
+ 'lr_scheduler': 'cosine',
+ 'max_seq_len': 95,
+ 'min_seq_len': 20,
+ 'model_prefix': '/content/drive/MyDrive/Colab '
+                 'Notebooks/SCMamba/sc_mamba_checkpoints',
+ 'multipoint': True,
+ 'nll_detach': True,
+ 'num_assets': 72,
+ 'num_epochs': 2,
+ 'pred_len': 12,
+ 'pred_len_min': 10,
+ 'pred_len_sample': False,
+ 'prior_config': {'curriculum_learning': False,
+                  'damp_and_spike': False,
+                  'damping_noise_ratio': 0.0,
+                  'fp_options': {'harmonic_rate': 0.75,
+                                 'harmonic_scale_ratio': 0.4,
+                                 'linear_random_walk_frac': 0,
+                                 'scale_noise': [0.6, 0.3],
+                                 'seasonal_only': False,
+                                 'transition_ratio': 0.0,
+                                 'trend_additional': True,
+                                 'trend_exp': False},
+                  'gp_prior_config': {'gaussian_sampling_ratio': 0.2,
+                                      'gaussians_periodic': True,
+                                      'kernel_bank': {'linear_kernel': 1,
+                                                      'matern_kernel': 1.5,
+                                                      'periodic_kernel': 5,
+                                                      'polynomial_kernel': 0,
+                                                      'spectral_mixture_kernel': 0},
+                                      'kernel_periods': [4,
+                                                         5,
+                                                         7,
+                                                         21,
+                                                         24,
+                                                         30,
+                                                         60,
+                                                         120],
+                                      'likelihood_noise_level': 0.4,
+                                      'max_kernels': 6,
+                                      'max_period_ratio': 1.0,
+                                      'noise_level': 'random',
+                                      'peak_spike_ratio': 0.1,
+                                      'periods_per_freq': 0.5,
+                                      'subfreq_ratio': 0.2,
+                                      'use_original_gp': False},
+                  'mixup_prob': 0.0,
+                  'mixup_series': 4,
+                  'prior_mix_frac': 0.5,
+                  'spike_batch_ratio': 0.0,
+                  'spike_noise_ratio': 0.0,
+                  'spike_signal_ratio': 0.0},
+ 'real_test_datasets': ['cif_2016'],
+ 'real_test_interval': 1,
+ 'real_train_datasets': ['cif_2016'],
+ 'sample_multi_pred': 0.3,
+ 'scaler': 'min_max',
+ 'seed': 42,
+ 'sin_pos_const': False,
+ 'sin_pos_enc': False,
+ 'spectral_config': {'alpha_init': 10.0, 'tau_init': 1.0},
+ 'ssm_config': {'bidirectional': False,
+                'block_expansion': 2,
+                'chunk_size': 256,
+                'd_state': 128,
+                'enc_conv': True,
+                'enc_conv_kernel': 5,
+                'global_residual': False,
+                'headdim': 128,
+                'in_proj_norm': False,
+                'init_conv_kernel': 5,
+                'init_conv_max_dilation': 3,
+                'init_dil_conv': True,
+                'initial_gelu_flag': True,
+                'linear_seq': 15,
+                'mamba2': True,
+                'norm': True,
+                'norm_type': 'layernorm',
+                'num_encoder_layers': 2,
+                'residual': False,
+                'token_embed_len': 1024},
+ 'sub_day': False,
+ 't_max': -1,
+ 'training_rounds': 10,
+ 'validation_rounds': 5,
+ 'version': 'v2_multi_cif_2016',
+ 'wandb': False}
+cuda device usage (before model load): 0.0
+[Preflight] N_assets adjusted: 72 → 61 (sparse-drop on cif_2016). Model will be built with N=61.
+  [adaptive_chunk] context_len=95 → chunk_size=64 (was 256)
+Using SCMamba_Forecaster (Spectral Variational Graph)
+
+============================================================
+  CHECKPOINT CONFIGURATION
+============================================================
+  model_save_name   : SCMamba_v2_multi_cif_2016
+  model_prefix      : /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints
+  continue_training : False
+  best  checkpoint  : /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints/SCMamba_v2_multi_cif_2016_best.pth
+       exists?      : True
+  periodic checkpoint: /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints/SCMamba_v2_multi_cif_2016.pth
+       exists?      : False
+  final checkpoint  : /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints/SCMamba_v2_multi_cif_2016_Final.pth
+       exists?      : True
+============================================================
+
+Starting fresh training (no checkpoint loaded)
+[Train] Multivariate mode: N_assets=61, datasets=['cif_2016']
+[MultivariateRealDataset] cif_2016 | N_assets=61 | train_windows=1 | val_windows=1
+cuda device usage (after model load): 92.50341796875
+Model size: 23756004
+cuda device usage (before training start): 92.51513671875
+============Training==================
+Waiting for first batch from dataloader...
+  [DIAG:pad] seq_len=107 → padded=128 (pad=21, waste=16.4%), chunk_size=64
+  [DIAG:spectral] N_assets=61, freq_bins=31, mask=[0.0000, 1.0000], alpha=10.00, tau=1.0000, KL=6.201814, fft_identity_diff=0.00e+00
+  [DIAG] history=torch.Size([61, 95]), pred_len=12, mu=torch.Size([61, 12]), sigma2 range=[0.023723, 4.3368], kl=6.201814
+============Validation==================
+  [DIAG:pad] seq_len=107 → padded=128 (pad=21, waste=16.4%), chunk_size=64
+  [DIAG:spectral] N_assets=61, freq_bins=31, mask=[0.0000, 1.0000], alpha=10.00, tau=0.9999, KL=6.429750, fft_identity_diff=0.00e+00
+Epoch: 1, SC. Validation Loss: 3.7601 From torchmetric: 71526620116025344.0000
+Time taken for epoch: 0.2 mins 13 secs.
+  ╔══════════════ EPOCH 1 DIAGNOSTICS ══════════════╗
+  ║ LR           = 5.00e-05
+  ║ beta (KL wt) = 0.0000  (annealed)
+  ║ gamma (spar) = 0.0000  (constant)
+  ║ avg NLL      =  3.3622 (lower is better)
+  ║ avg KL       =  6.2018 (lower is better)
+  ║ avg KL×beta  = 0.000000
+  ║ avg Loss     =  3.3622 (lower is better)
+  ║ avg GradNorm = 1884.4347
+  ║ sigma2 range = [0.023723, 4.3368]
+  ║ avg Tau      = 0.9999  (constant) | Alpha = 10.00 (learned, lower=sparser)
+  ║ avg MaskMean = 0.6188  (lower is better, dense fraction)
+  ║ Mask Sparsity= 13.13% (higher is better, % < 0.01)
+  ║ S2 Collapse  =  0.00% (<1e-3, lower is better)
+  ║ val_loss     =  3.7601 (lower is better)
+  ║ best_val     =     inf (lower is better)
+  ╚═══════════════════════════════════════════════════════╝
+  🏆 Best checkpoint saved (epoch 1, val_loss=3.7601)
+Evaluating on real dataset: cif_2016
+  [eval_pipeline] Multivariate aligned eval: N_assets=61 on cif_2016
+  [DIAG:pad] seq_len=268 → padded=320 (pad=52, waste=16.2%), chunk_size=64
+  [DIAG:spectral] N_assets=61, freq_bins=31, mask=[0.0000, 1.0000], alpha=10.00, tau=0.9999, KL=6.957485, fft_identity_diff=0.00e+00
+MASE: 31.5512, MAE: 51263852.0000, RMSE: 52520572.0000, SMAPE: 1.0000, NLL: 10.2212, CRPS: 37060203.6818, mCRPS: 4.0655
+  [DIAG:mase] median_real_mase=31.5512 (over 1 datasets, 0 excluded inf/nan)
+  🎯 Best MASE checkpoint saved (epoch 1, median_mase=31.5512)
+============Training==================
+Waiting for first batch from dataloader...
+  [DIAG] history=torch.Size([61, 95]), pred_len=12, mu=torch.Size([61, 12]), sigma2 range=[0.000002, 9.5647], kl=6.577796
+============Validation==================
+Epoch: 2, SC. Validation Loss: 4.9672 From torchmetric: 91550208621543424.0000
+Time taken for epoch: 0.0 mins 1 secs.
+  ╔══════════════ EPOCH 2 DIAGNOSTICS ══════════════╗
+  ║ LR           = 3.00e-05
+  ║ beta (KL wt) = 0.0200  (annealed)
+  ║ gamma (spar) = 0.0100  (constant)
+  ║ avg NLL      = 11008321.0000 (lower is better)
+  ║ avg KL       =  6.5778 (lower is better)
+  ║ avg KL×beta  = 0.131556
+  ║ avg Loss     = 11008321.0000 (lower is better)
+  ║ avg GradNorm = 16837816320.0000
+  ║ sigma2 range = [0.000002, 9.5647]
+  ║ avg Tau      = 0.9999  (constant) | Alpha = 10.00 (learned, lower=sparser)
+  ║ avg MaskMean = 0.6205  (lower is better, dense fraction)
+  ║ Mask Sparsity= 13.02% (higher is better, % < 0.01)
+  ║ S2 Collapse  =  8.33% (<1e-3, lower is better)
+  ║ val_loss     =  4.9672 (lower is better)
+  ║ best_val     =  3.7601 (lower is better)
+  ╚═══════════════════════════════════════════════════════╝
+Evaluating on real dataset: cif_2016
+  [eval_pipeline] Multivariate aligned eval: N_assets=61 on cif_2016
+MASE: 36.6941, MAE: 58713352.0000, RMSE: 59566880.0000, SMAPE: 1.0000, NLL: 10.8455, CRPS: 44627003.7081, mCRPS: 4.8956
+  [DIAG:mase] median_real_mase=36.6941 (over 1 datasets, 0 excluded inf/nan)
+
+✅ cif_2016 training complete.
+
+[OOM Prevention] Cool down and release memory...
+
+=================================================================
+🚀 CROSS-ASSET TRAINING: TOURISM_MONTHLY
+   num_assets    : 366
+   dyn_batch_size: 1
+   chunk_size    : 64
+   context_len   : 138 (seq_len=163)
+   prior_mix_frac: 0.5  (synthetic 50% + real 50%)
+   num_epochs    : 2
+=================================================================
+📝 Config saved: ./core/config.v2_multi_tourism_monthly.yaml
+  ✅ tourism_monthly                → tourism_monthly_nopad_512.pkl (1.7 MB)
+
+✅ Real validation dataset found.
+config:
+{'batch_size': 1,
+ 'beta_anneal_epochs': 10,
+ 'beta_kl': 0.2,
+ 'context_len': 138,
+ 'continue_training': False,
+ 'debugging': False,
+ 'diag_prints': True,
+ 'encoding_dropout': 0.1,
+ 'gamma_sparsity': 0.1,
+ 'handle_constants_model': True,
+ 'initial_lr': 5e-05,
+ 'learning_rate': 1e-05,
+ 'loss': 'nll',
+ 'lr_scheduler': 'cosine',
+ 'max_seq_len': 138,
+ 'min_seq_len': 20,
+ 'model_prefix': '/content/drive/MyDrive/Colab '
+                 'Notebooks/SCMamba/sc_mamba_checkpoints',
+ 'multipoint': True,
+ 'nll_detach': True,
+ 'num_assets': 366,
+ 'num_epochs': 2,
+ 'pred_len': 24,
+ 'pred_len_min': 10,
+ 'pred_len_sample': False,
+ 'prior_config': {'curriculum_learning': False,
+                  'damp_and_spike': False,
+                  'damping_noise_ratio': 0.0,
+                  'fp_options': {'harmonic_rate': 0.75,
+                                 'harmonic_scale_ratio': 0.4,
+                                 'linear_random_walk_frac': 0,
+                                 'scale_noise': [0.6, 0.3],
+                                 'seasonal_only': False,
+                                 'transition_ratio': 0.0,
+                                 'trend_additional': True,
+                                 'trend_exp': False},
+                  'gp_prior_config': {'gaussian_sampling_ratio': 0.2,
+                                      'gaussians_periodic': True,
+                                      'kernel_bank': {'linear_kernel': 1,
+                                                      'matern_kernel': 1.5,
+                                                      'periodic_kernel': 5,
+                                                      'polynomial_kernel': 0,
+                                                      'spectral_mixture_kernel': 0},
+                                      'kernel_periods': [4,
+                                                         5,
+                                                         7,
+                                                         21,
+                                                         24,
+                                                         30,
+                                                         60,
+                                                         120],
+                                      'likelihood_noise_level': 0.4,
+                                      'max_kernels': 6,
+                                      'max_period_ratio': 1.0,
+                                      'noise_level': 'random',
+                                      'peak_spike_ratio': 0.1,
+                                      'periods_per_freq': 0.5,
+                                      'subfreq_ratio': 0.2,
+                                      'use_original_gp': False},
+                  'mixup_prob': 0.0,
+                  'mixup_series': 4,
+                  'prior_mix_frac': 0.5,
+                  'spike_batch_ratio': 0.0,
+                  'spike_noise_ratio': 0.0,
+                  'spike_signal_ratio': 0.0},
+ 'real_test_datasets': ['tourism_monthly'],
+ 'real_test_interval': 1,
+ 'real_train_datasets': ['tourism_monthly'],
+ 'sample_multi_pred': 0.3,
+ 'scaler': 'min_max',
+ 'seed': 42,
+ 'sin_pos_const': False,
+ 'sin_pos_enc': False,
+ 'spectral_config': {'alpha_init': 10.0, 'tau_init': 1.0},
+ 'ssm_config': {'bidirectional': False,
+                'block_expansion': 2,
+                'chunk_size': 64,
+                'd_state': 128,
+                'enc_conv': True,
+                'enc_conv_kernel': 5,
+                'global_residual': False,
+                'headdim': 128,
+                'in_proj_norm': False,
+                'init_conv_kernel': 5,
+                'init_conv_max_dilation': 3,
+                'init_dil_conv': True,
+                'initial_gelu_flag': True,
+                'linear_seq': 15,
+                'mamba2': True,
+                'norm': True,
+                'norm_type': 'layernorm',
+                'num_encoder_layers': 2,
+                'residual': False,
+                'token_embed_len': 1024},
+ 'sub_day': False,
+ 't_max': -1,
+ 'training_rounds': 10,
+ 'validation_rounds': 5,
+ 'version': 'v2_multi_tourism_monthly',
+ 'wandb': False}
+cuda device usage (before model load): 0.0
+[Preflight] N_assets adjusted: 366 → 365 (sparse-drop on tourism_monthly). Model will be built with N=365.
+  [adaptive_chunk] context_len=138 → chunk_size=128 (was 64)
+Using SCMamba_Forecaster (Spectral Variational Graph)
+
+============================================================
+  CHECKPOINT CONFIGURATION
+============================================================
+  model_save_name   : SCMamba_v2_multi_tourism_monthly
+  model_prefix      : /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints
+  continue_training : False
+  best  checkpoint  : /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints/SCMamba_v2_multi_tourism_monthly_best.pth
+       exists?      : False
+  periodic checkpoint: /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints/SCMamba_v2_multi_tourism_monthly.pth
+       exists?      : False
+  final checkpoint  : /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints/SCMamba_v2_multi_tourism_monthly_Final.pth
+       exists?      : False
+============================================================
+
+Starting fresh training (no checkpoint loaded)
+[Train] Multivariate mode: N_assets=365, datasets=['tourism_monthly']
+[MultivariateRealDataset] tourism_monthly | N_assets=365 | train_windows=130 | val_windows=7
+cuda device usage (after model load): 92.50341796875
+Model size: 23756004
+cuda device usage (before training start): 92.51513671875
+============Training==================
+Waiting for first batch from dataloader...
+  [DIAG:pad] seq_len=162 → padded=256 (pad=94, waste=36.7%), chunk_size=128
+  [DIAG:spectral] N_assets=365, freq_bins=183, mask=[0.0000, 1.0000], alpha=10.00, tau=1.0000, KL=600863507316676084803567616.000000, fft_identity_diff=0.00e+00
+  [DIAG] history=torch.Size([365, 138]), pred_len=24, mu=torch.Size([365, 24]), sigma2 range=[0.000001, 144727043211264.0000], kl=600863507316676084803567616.000000
+Traceback (most recent call last):
+  File "/content/SC-Mamba/./core/train.py", line 862, in <module>
+    train_model(config)
+  File "/content/SC-Mamba/./core/train.py", line 519, in train_model
+    loss.backward()
+  File "/usr/local/lib/python3.12/dist-packages/torch/_tensor.py", line 521, in backward
+    torch.autograd.backward(
+  File "/usr/local/lib/python3.12/dist-packages/torch/autograd/__init__.py", line 289, in backward
+    _engine_run_backward(
+  File "/usr/local/lib/python3.12/dist-packages/torch/autograd/graph.py", line 768, in _engine_run_backward
+    return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/autograd/function.py", line 306, in apply
+    return user_fn(self, *args)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/amp/autocast_mode.py", line 501, in decorate_bwd
+    return bwd(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/mamba_ssm/ops/triton/ssd_combined.py", line 893, in backward
+    dx, ddt, dA, dB, dC, dD, _, ddt_bias, dinitial_states = _mamba_chunk_scan_combined_bwd(
+                                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/mamba_ssm/ops/triton/ssd_combined.py", line 380, in _mamba_chunk_scan_combined_bwd
+    states = _chunk_state_fwd(B, x, dt, dA_cumsum, seq_idx=seq_idx, states_in_fp32=True)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/mamba_ssm/ops/triton/ssd_chunk_state.py", line 742, in _chunk_state_fwd
+    states = torch.empty((batch, nchunks, nheads, headdim, dstate), device=x.device, dtype=states_dtype)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 730.00 MiB. GPU 0 has a total capacity of 14.56 GiB of which 275.81 MiB is free. Including non-PyTorch memory, this process has 14.29 GiB memory in use. Of the allocated memory 13.04 GiB is allocated by PyTorch, and 1.10 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
+
+❌ tourism_monthly training failed (exit code 1). Continuing to next...
+
+[OOM Prevention] Cool down and release memory...
+
+=================================================================
+🚀 CROSS-ASSET TRAINING: TOURISM_QUARTERLY
+   num_assets    : 427
+   dyn_batch_size: 1
+   chunk_size    : 48
+   context_len   : 46 (seq_len=55)
+   prior_mix_frac: 0.5  (synthetic 50% + real 50%)
+   num_epochs    : 2
+=================================================================
+📝 Config saved: ./core/config.v2_multi_tourism_quarterly.yaml
+  ✅ tourism_quarterly              → tourism_quarterly_nopad_512.pkl (0.7 MB)
+
+✅ Real validation dataset found.
+config:
+{'batch_size': 1,
+ 'beta_anneal_epochs': 10,
+ 'beta_kl': 0.2,
+ 'context_len': 46,
+ 'continue_training': False,
+ 'debugging': False,
+ 'diag_prints': True,
+ 'encoding_dropout': 0.1,
+ 'gamma_sparsity': 0.1,
+ 'handle_constants_model': True,
+ 'initial_lr': 5e-05,
+ 'learning_rate': 1e-05,
+ 'loss': 'nll',
+ 'lr_scheduler': 'cosine',
+ 'max_seq_len': 46,
+ 'min_seq_len': 20,
+ 'model_prefix': '/content/drive/MyDrive/Colab '
+                 'Notebooks/SCMamba/sc_mamba_checkpoints',
+ 'multipoint': True,
+ 'nll_detach': True,
+ 'num_assets': 427,
+ 'num_epochs': 2,
+ 'pred_len': 8,
+ 'pred_len_min': 10,
+ 'pred_len_sample': False,
+ 'prior_config': {'curriculum_learning': False,
+                  'damp_and_spike': False,
+                  'damping_noise_ratio': 0.0,
+                  'fp_options': {'harmonic_rate': 0.75,
+                                 'harmonic_scale_ratio': 0.4,
+                                 'linear_random_walk_frac': 0,
+                                 'scale_noise': [0.6, 0.3],
+                                 'seasonal_only': False,
+                                 'transition_ratio': 0.0,
+                                 'trend_additional': True,
+                                 'trend_exp': False},
+                  'gp_prior_config': {'gaussian_sampling_ratio': 0.2,
+                                      'gaussians_periodic': True,
+                                      'kernel_bank': {'linear_kernel': 1,
+                                                      'matern_kernel': 1.5,
+                                                      'periodic_kernel': 5,
+                                                      'polynomial_kernel': 0,
+                                                      'spectral_mixture_kernel': 0},
+                                      'kernel_periods': [4,
+                                                         5,
+                                                         7,
+                                                         21,
+                                                         24,
+                                                         30,
+                                                         60,
+                                                         120],
+                                      'likelihood_noise_level': 0.4,
+                                      'max_kernels': 6,
+                                      'max_period_ratio': 1.0,
+                                      'noise_level': 'random',
+                                      'peak_spike_ratio': 0.1,
+                                      'periods_per_freq': 0.5,
+                                      'subfreq_ratio': 0.2,
+                                      'use_original_gp': False},
+                  'mixup_prob': 0.0,
+                  'mixup_series': 4,
+                  'prior_mix_frac': 0.5,
+                  'spike_batch_ratio': 0.0,
+                  'spike_noise_ratio': 0.0,
+                  'spike_signal_ratio': 0.0},
+ 'real_test_datasets': ['tourism_quarterly'],
+ 'real_test_interval': 1,
+ 'real_train_datasets': ['tourism_quarterly'],
+ 'sample_multi_pred': 0.3,
+ 'scaler': 'min_max',
+ 'seed': 42,
+ 'sin_pos_const': False,
+ 'sin_pos_enc': False,
+ 'spectral_config': {'alpha_init': 10.0, 'tau_init': 1.0},
+ 'ssm_config': {'bidirectional': False,
+                'block_expansion': 2,
+                'chunk_size': 48,
+                'd_state': 128,
+                'enc_conv': True,
+                'enc_conv_kernel': 5,
+                'global_residual': False,
+                'headdim': 128,
+                'in_proj_norm': False,
+                'init_conv_kernel': 5,
+                'init_conv_max_dilation': 3,
+                'init_dil_conv': True,
+                'initial_gelu_flag': True,
+                'linear_seq': 15,
+                'mamba2': True,
+                'norm': True,
+                'norm_type': 'layernorm',
+                'num_encoder_layers': 2,
+                'residual': False,
+                'token_embed_len': 1024},
+ 'sub_day': False,
+ 't_max': -1,
+ 'training_rounds': 10,
+ 'validation_rounds': 5,
+ 'version': 'v2_multi_tourism_quarterly',
+ 'wandb': False}
+cuda device usage (before model load): 0.0
+[Preflight] N_assets adjusted: 427 → 412 (sparse-drop on tourism_quarterly). Model will be built with N=412.
+  [adaptive_chunk] context_len=46 → chunk_size=32 (was 48)
+Using SCMamba_Forecaster (Spectral Variational Graph)
+
+============================================================
+  CHECKPOINT CONFIGURATION
+============================================================
+  model_save_name   : SCMamba_v2_multi_tourism_quarterly
+  model_prefix      : /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints
+  continue_training : False
+  best  checkpoint  : /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints/SCMamba_v2_multi_tourism_quarterly_best.pth
+       exists?      : False
+  periodic checkpoint: /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints/SCMamba_v2_multi_tourism_quarterly.pth
+       exists?      : False
+  final checkpoint  : /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints/SCMamba_v2_multi_tourism_quarterly_Final.pth
+       exists?      : False
+============================================================
+
+Starting fresh training (no checkpoint loaded)
+[Train] Multivariate mode: N_assets=412, datasets=['tourism_quarterly']
+[MultivariateRealDataset] tourism_quarterly | N_assets=412 | train_windows=40 | val_windows=23
+cuda device usage (after model load): 92.50341796875
+Model size: 23756004
+cuda device usage (before training start): 92.51513671875
+============Training==================
+Waiting for first batch from dataloader...
+  [DIAG:pad] seq_len=54 → padded=64 (pad=10, waste=15.6%), chunk_size=32
+  [DIAG:spectral] N_assets=412, freq_bins=207, mask=[0.0000, 1.0000], alpha=10.00, tau=1.0000, KL=5915836790343411161718144892928.000000, fft_identity_diff=0.00e+00
+  [DIAG] history=torch.Size([412, 46]), pred_len=8, mu=torch.Size([412, 8]), sigma2 range=[0.000001, 7790024850407424.0000], kl=5915836790343411161718144892928.000000
+  [DIAG:pad] seq_len=54 → padded=64 (pad=10, waste=15.6%), chunk_size=32
+  [DIAG:spectral] N_assets=412, freq_bins=207, mask=[nan, nan], alpha=nan, tau=nan, KL=nan, fft_identity_diff=nan
+  [DIAG:pad] seq_len=47 → padded=64 (pad=17, waste=26.6%), chunk_size=32
+  [DIAG:spectral] N_assets=412, freq_bins=207, mask=[nan, nan], alpha=nan, tau=nan, KL=nan, fft_identity_diff=nan
+Epoch: 1, Batch: 10, Total Loss: nan, NLL: nan, KL: nan From torchmetric: nan
+============Validation==================
+Epoch: 1, SC. Validation Loss: nan From torchmetric: nan
+Time taken for epoch: 0.5 mins 27 secs.
+  ╔══════════════ EPOCH 1 DIAGNOSTICS ══════════════╗
+  ║ LR           = 5.00e-05
+  ║ beta (KL wt) = 0.0180  (annealed)
+  ║ gamma (spar) = 0.0090  (constant)
+  ║ avg NLL      =     nan (lower is better)
+  ║ avg KL       =     nan (lower is better)
+  ║ avg KL×beta  =     nan
+  ║ avg Loss     =     nan (lower is better)
+  ║ avg GradNorm =     nan
+  ║ sigma2 range = [0.000001, 7790024850407424.0000]
+  ║ avg Tau      = nan  (constant) | Alpha = nan (learned, lower=sparser)
+  ║ avg MaskMean = nan  (lower is better, dense fraction)
+  ║ Mask Sparsity=  1.33% (higher is better, % < 0.01)
+  ║ S2 Collapse  =  5.00% (<1e-3, lower is better)
+  ║ val_loss     =     nan (lower is better)
+  ║ best_val     =     inf (lower is better)
+  ╚═══════════════════════════════════════════════════════╝
+Evaluating on real dataset: tourism_quarterly
+  [eval_pipeline] Multivariate aligned eval: N_assets=412 on tourism_quarterly
+Traceback (most recent call last):
+  File "/content/SC-Mamba/./core/train.py", line 862, in <module>
+    train_model(config)
+  File "/content/SC-Mamba/./core/train.py", line 748, in train_model
+    real_mase, real_mae, real_rmse, real_smape, real_nll, real_crps, real_mcrps = validate_on_real_dataset(
+                                                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/content/SC-Mamba/core/real_data_val_pipeline.py", line 142, in validate_on_real_dataset
+    batch_train_dfs, batch_pred_dfs = multivariate_predict_aligned(
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/content/SC-Mamba/core/eval_real_dataset.py", line 397, in multivariate_predict_aligned
+    output = model(data, prediction_length=T_pred)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/content/SC-Mamba/core/models.py", line 327, in forward
+    backbone_out = self.backbone(x, prediction_length)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/content/SC-Mamba/core/models.py", line 104, in forward
+    embedded_Z = self.encode_temporal(ts, embedded, target, prediction_length)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/content/SC-Mamba/core/models.py", line 143, in encode_temporal
+    x = encoder_layer(x)
+        ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/content/SC-Mamba/core/blocks.py", line 239, in forward
+    x_ssm = self.mamba_layer(self.norm_layer_1(x))
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/mamba_ssm/modules/mamba2.py", line 185, in forward
+    out = mamba_split_conv1d_scan_combined(
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/mamba_ssm/ops/triton/ssd_combined.py", line 930, in mamba_split_conv1d_scan_combined
+    return MambaSplitConv1dScanCombinedFn.apply(zxbcdt, conv1d_weight, conv1d_bias, dt_bias, A, D, chunk_size, initial_states, seq_idx, dt_limit, return_final_states, activation, rmsnorm_weight, rmsnorm_eps, outproj_weight, outproj_bias, headdim, ngroups, norm_before_gate)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/autograd/function.py", line 574, in apply
+    return super().apply(*args, **kwargs)  # type: ignore[misc]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/amp/autocast_mode.py", line 455, in decorate_fwd
+    return fwd(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/mamba_ssm/ops/triton/ssd_combined.py", line 795, in forward
+    out_x, _, dt_out, dA_cumsum, states, final_states = _mamba_chunk_scan_combined_fwd(x, dt, A, B, C, chunk_size=chunk_size, D=D, z=None, dt_bias=dt_bias, initial_states=initial_states, seq_idx=seq_idx, dt_softplus=True, dt_limit=dt_limit)
+                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/mamba_ssm/ops/triton/ssd_combined.py", line 317, in _mamba_chunk_scan_combined_fwd
+    states, final_states = _state_passing_fwd(rearrange(states, "... p n -> ... (p n)"), dA_cumsum[:, :, :, -1],
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/mamba_ssm/ops/triton/ssd_state_passing.py", line 205, in _state_passing_fwd
+    out = torch.empty((batch, nchunks, nheads, dim), device=states.device, dtype=out_dtype)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 3.62 GiB. GPU 0 has a total capacity of 14.56 GiB of which 3.26 GiB is free. Including non-PyTorch memory, this process has 11.30 GiB memory in use. Of the allocated memory 7.91 GiB is allocated by PyTorch, and 3.25 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
+
+❌ tourism_quarterly training failed (exit code 1). Continuing to next...
+
+[OOM Prevention] Cool down and release memory...
+
+================================================================================
+                             DATASET SUMMARY REPORT                             
+================================================================================
+Dataset                             | Status       | Details
+--------------------------------------------------------------------------------
+nn5_daily_without_missing           | ✅ SUCCESS    | N=111
+nn5_weekly                          | ✅ SUCCESS    | N=111
+covid_deaths                        | ✅ SUCCESS    | N=266
+hospital                            | ❌ FAILED     | Exit Code 1
+fred_md                             | ✅ SUCCESS    | N=107
+car_parts_without_missing           | ❌ FAILED     | Exit Code 1
+traffic                             | ❌ FAILED     | Exit Code 1
+m1_monthly                          | ❌ FAILED     | Exit Code 1
+m1_quarterly                        | ❌ FAILED     | Exit Code 1
+m3_monthly                          | ❌ FAILED     | Exit Code 1
+m3_quarterly                        | ❌ FAILED     | Exit Code 1
+cif_2016                            | ✅ SUCCESS    | N=72
+tourism_monthly                     | ❌ FAILED     | Exit Code 1
+tourism_quarterly                   | ❌ FAILED     | Exit Code 1
+================================================================================

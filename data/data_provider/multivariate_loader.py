@@ -303,6 +303,7 @@ def create_multivariate_real_dl(
     context_len  = config['context_len']
     sub_day      = config.get('sub_day', False)
     batch_size   = config.get('batch_size', 8)
+    col_indices  = config.get('col_indices')  # Extract Top-Var indices if provided
 
     # Resolve PKL path
     data_dir = os.path.join(_PROJECT_ROOT, 'data', 'real_val_datasets')
@@ -317,11 +318,11 @@ def create_multivariate_real_dl(
 
     train_ds = MultivariateRealDataset(
         pkl_path, pred_len, context_len, split='train',
-        N_assets=N_assets, sub_day=sub_day,
+        N_assets=N_assets, sub_day=sub_day, col_indices=col_indices,
     )
     val_ds = MultivariateRealDataset(
         pkl_path, pred_len, context_len, split='val',
-        N_assets=N_assets, sub_day=sub_day,
+        N_assets=N_assets, sub_day=sub_day, col_indices=col_indices,
     )
 
     # ── Sync effective N back into config (may have been auto-clamped by sparse-drop) ──

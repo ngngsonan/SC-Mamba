@@ -397,6 +397,10 @@ def multivariate_predict_aligned(
             output = model(data, prediction_length=T_pred)
             scaled_mu, scaled_sigma2 = scale_data(output, scaler)
 
+            # Optimization: Clear GPU cache immediately after inference for large models
+            if N >= 100:
+                torch.cuda.empty_cache()
+
             # mu/sigma2 shape: (N, T_pred)
             mu_np    = scaled_mu.detach().cpu().numpy()       # (N, T_pred)
             sig_np   = scaled_sigma2.detach().cpu().numpy()   # (N, T_pred)

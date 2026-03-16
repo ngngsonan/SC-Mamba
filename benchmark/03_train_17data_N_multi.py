@@ -5,14 +5,55 @@
 # Note: exchange_rate trained in 01, and m3/ercot missing dependencies.
 # weather is heavily corrupted.
 # ============================================================
-import yaml, os, subprocess, time
+import yaml, os, subprocess, time, gc, pickle
+import pandas as pd
+import torch
 from pathlib import Path
 
 PROJECT_ROOT   = '.'
 CHECKPOINT_DIR = '/content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints'
 
-# ── Danh sách 14 datasets Multivariate ───────────────────
-# Added seq_len from GluonTS metadata to calculate max allowed context_len cleanly.
+# ── Global Result Tracker ─────────────────────────────────
+results_summary = []
+MAX_ASSETS      = 300  # Cap N to 300 for stability/OOM prevention
+
+def get_top_variance_indices(pkl_path, n_limit):
+    """
+    Selects the Top-N indices with the highest standard deviation 
+    to ensure the model learns from the most 'informative' series.
+    """
+    if not os.path.exists(pkl_path):
+        return None
+    try:
+        with open(pkl_path, 'rb') as f:
+            df = pickle.load(f)
+        
+        # Calculate variance per Series
+        # df usually has MultiIndex (Series, date) or similar.
+        # We need variance across time for each Series.
+        # pivot if needed or use groupby
+        df_flat = df.reset_index()
+        # Series is the column identifying the asset
+        df_piv = df_flat.pivot_table(index='date', columns='Series', values='target', aggfunc='first')
+        
+        # Calculate std and sort
+        vars = df_piv.std(axis=0).fillna(0)
+        top_series = vars.sort_values(ascending=False).head(n_limit).index.tolist()
+        
+        # Get integer positions of these series names in the original pivot columns
+        all_series = df_piv.columns.tolist()
+        indices = [all_series.index(s) for s in top_series]
+        
+        del df, df_flat, df_piv
+        gc.collect()
+        return sorted(indices)
+    except Exception as e:
+        print(f"   ⚠️  Subsampling error: {e}")
+        return None
+
+# ── Danh sách datasets Multivariate (Stabilized Phase 2) ──
+# Datasets like M1/M3 are removed because they contain unaligned series collections,
+# which results in "NaN-heavy" pivots where most series are dropped.
 EXPERIMENTS = {
     'nn5_daily_without_missing': {'num_assets': 111, 'pred_len': 56, 'seq_len': 735},
     'nn5_weekly':                {'num_assets': 111, 'pred_len': 8,  'seq_len': 105},
@@ -20,14 +61,10 @@ EXPERIMENTS = {
     'hospital':                  {'num_assets': 767, 'pred_len': 12, 'seq_len': 72},
     'fred_md':                   {'num_assets': 107, 'pred_len': 12, 'seq_len': 716},
     'car_parts_without_missing': {'num_assets': 2674, 'pred_len': 12, 'seq_len': 39},
-    'traffic':                   {'num_assets': 862, 'pred_len': 24, 'seq_len': 14036},
-    'm1_monthly':                {'num_assets': 617, 'pred_len': 18, 'seq_len': 42},
-    'm1_quarterly':              {'num_assets': 203, 'pred_len': 8,  'seq_len': 40},
-    'm3_monthly':                {'num_assets': 1428, 'pred_len': 18, 'seq_len': 144},
-    'm3_quarterly':              {'num_assets': 756,  'pred_len': 8,  'seq_len': 72},
-    'cif_2016':                  {'num_assets': 72,  'pred_len': 12, 'seq_len': 108},
-    'tourism_monthly':           {'num_assets': 366, 'pred_len': 24, 'seq_len': 163},
-    'tourism_quarterly':         {'num_assets': 427, 'pred_len': 8,  'seq_len': 55},
+    'traffic':                   {'num_assets': 862,  'pred_len': 24, 'seq_len': 14036},
+    'cif_2016':                  {'num_assets': 72,   'pred_len': 12, 'seq_len': 108},
+    'tourism_monthly':           {'num_assets': 366,  'pred_len': 24, 'seq_len': 163},
+    'tourism_quarterly':         {'num_assets': 427,  'pred_len': 8,  'seq_len': 55},
 }
 
 # ── Template cấu hình (shared across experiments) ───────────
@@ -66,8 +103,8 @@ BASE_CONFIG = {
     },
 
     # Training schedule
-    'num_epochs'        : 30,   # Train from scratch — epoch 0
-    'validation_rounds' : 50,
+    'num_epochs'        : 2, #30,   # Train from scratch — epoch 0
+    'validation_rounds' : 5, #50,
     'real_test_interval': 1,
 
     # Learning rate
@@ -147,30 +184,57 @@ for dataset_name, exp_cfg in EXPERIMENTS.items():
     seq_len = exp_cfg['seq_len']
     pred_len = exp_cfg['pred_len']
     
-    # --- DYNAMIC DATASET HEURISTICS ---
-    # Safe batch allocation strategy: Total tokens roughly = B * N * Context
-    safe_target = 64  # Equivalent base: 8 batch * 8 assets (from exchange_rate)
+    # --- DYNAMIC DATASET HEURISTICS (Phase 2 Strict) ---
+    # Safe batch allocation strategy
+    safe_target = 64
     dynamic_batch_size = max(1, safe_target // num_assets)
     
-    # Fix 1: Dynamically calculate context_len so Multivariate Loader doesn't crash on num_samples=0
-    # Minimum train seq required = context_len + pred_len >= seq_len. 
+    # Skip if final checkpoint already exists to save time
+    final_cp = os.path.join(CHECKPOINT_DIR, f'SCMamba_v2_multi_{dataset_name}_Final.pth')
+    if os.path.exists(final_cp):
+        print(f"⏩ {dataset_name} already has a Final checkpoint. Skipping...")
+        results_summary.append({'dataset': dataset_name, 'status': '⏩ SKIPPED', 'details': 'Final CP exists'})
+        continue
+
+    # Outlier Reduction for problematic datasets
+    CURRENT_MAX_ASSETS = MAX_ASSETS
+    if dataset_name in ['traffic', 'tourism_monthly']:
+        CURRENT_MAX_ASSETS = 200  # Stricter limit for long-seq or high-variance memory hogs
+        print(f"   [Limit] {dataset_name} capped at {CURRENT_MAX_ASSETS} assets.")
+
+    # Fix 1: Dynamically calculate context_len
     max_allowed_context = max(24, seq_len - pred_len - 1)
     context_len = min(256, max_allowed_context)
+    
+    # Specific fix for Traffic (extremely long seq, save memory on context)
+    if dataset_name == 'traffic':
+        context_len = min(128, context_len)
 
-    # Note: if seq_len is extremely small (e.g. car_parts with seq=39, pred=12),
-    # context will shrink to 26, enabling at least 1 training window.
-
-    # Fix 2: Severe OOM protection for dense networks using granular chunk_size scaling
-    if num_assets >= 2000:
-        chunk_size = 16   # car_parts (2.6k assets)
-    elif num_assets >= 1000:
-        chunk_size = 32   # m3_monthly (1.4k assets)
-    elif num_assets >= 700:
-        chunk_size = 48   # hospital, traffic, m3_quarterly
-    elif num_assets >= 500:
-        chunk_size = 64   # m1_monthly
+    # Refined OOM Scaling thresholds (Strict Phase 2)
+    if num_assets >= 300:
+        chunk_size = 16   # Max safety for high-N
+    elif num_assets >= 200:
+        chunk_size = 32   
+    elif num_assets >= 100:
+        chunk_size = 64
     else:
-        chunk_size = BASE_CONFIG['ssm_config']['chunk_size']
+        chunk_size = 128
+
+    # Fix 3: Memory compression for high asset counts
+    if num_assets >= 1000:
+        context_len = min(128, context_len)
+
+    # Fix 4: Asset Subsampling for Scalability
+    col_indices = None
+    if num_assets > CURRENT_MAX_ASSETS:
+        print(f"   [Subsampling] {dataset_name}: {num_assets} → planning to keep {CURRENT_MAX_ASSETS}...")
+        REAL_VAL_DIR = os.path.join(PROJECT_ROOT, 'data', 'real_val_datasets')
+        pkl_path = os.path.join(REAL_VAL_DIR, f'{dataset_name}_nopad_512.pkl')
+        
+        col_indices = get_top_variance_indices(pkl_path, CURRENT_MAX_ASSETS)
+        if col_indices:
+            print(f"   [Subsampling] Kept Top-{len(col_indices)} most variable assets.")
+            num_assets = len(col_indices)
 
     print(f"\n{'='*65}")
     print(f"🚀 CROSS-ASSET TRAINING: {dataset_name.upper()}")
@@ -194,6 +258,8 @@ for dataset_name, exp_cfg in EXPERIMENTS.items():
     config['max_seq_len']         = context_len
     config['batch_size']          = dynamic_batch_size
     config['ssm_config']['chunk_size'] = chunk_size
+    if col_indices:
+        config['col_indices'] = col_indices
     
     # Generic multivariate settings from original exchange_rate config
     config['beta_kl']             = 0.2
@@ -264,20 +330,42 @@ for dataset_name, exp_cfg in EXPERIMENTS.items():
         print(f'\n✅ Real validation dataset found.')
 
     # =====================================================================
-    # 2. RUN TRAINING
+    # 2. RUN TRAINING (with Error Recovery)
     # =====================================================================
-    # Launch training — stream logs live
-    cmd = ['python', f'{PROJECT_ROOT}/core/train.py', '-c', config_path]
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    for line in iter(proc.stdout.readline, ''):
-        print(line, end='', flush=True)
-    proc.stdout.close()
-    rc = proc.wait()
-
-    if rc == 0:
-        print(f"\n✅ {dataset_name} training complete.")
-    else:
-        print(f"\n❌ {dataset_name} training failed (exit code {rc}). Continuing to next...")
+    try:
+        cmd = ['python', f'{PROJECT_ROOT}/core/train.py', '-c', config_path]
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        for line in iter(proc.stdout.readline, ''):
+            print(line, end='', flush=True)
+        proc.stdout.close()
+        rc = proc.wait()
         
+        if rc == 0:
+            results_summary.append({'dataset': dataset_name, 'status': '✅ SUCCESS', 'details': f'N={num_assets}'})
+            print(f"\n✅ {dataset_name} training complete.")
+        else:
+            results_summary.append({'dataset': dataset_name, 'status': '❌ FAILED', 'details': f'Exit Code {rc}'})
+            print(f"\n❌ {dataset_name} training failed (exit code {rc}). Continuing to next...")
+            
+    except Exception as e:
+        print(f"Unexpected error training {dataset_name}: {str(e)}")
+        results_summary.append({'dataset': dataset_name, 'status': '❌ ERROR', 'details': str(e)[:50]})
+
     print("\n[OOM Prevention] Cool down and release memory...")
+    # Explicit Cleanup
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    gc.collect()
     time.sleep(3)
+
+# =====================================================================
+# 🚀 FINAL SUMMARY REPORT
+# =====================================================================
+print("\n" + "="*80)
+print(f"{'DATASET SUMMARY REPORT':^80}")
+print("="*80)
+print(f"{'Dataset':<35} | {'Status':<12} | {'Details'}")
+print("-" * 80)
+for res in results_summary:
+    print(f"{res['dataset']:<35} | {res['status']:<12} | {res['details']}")
+print("="*80)
