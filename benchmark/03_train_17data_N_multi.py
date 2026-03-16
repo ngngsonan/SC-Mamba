@@ -51,9 +51,8 @@ def get_top_variance_indices(pkl_path, n_limit):
         print(f"   ⚠️  Subsampling error: {e}")
         return None
 
-# ── Danh sách datasets Multivariate (Stabilized Phase 2) ──
-# Datasets like M1/M3 are removed because they contain unaligned series collections,
-# which results in "NaN-heavy" pivots where most series are dropped.
+# ── Danh sách 14 datasets Multivariate ───────────────────
+# Added seq_len from GluonTS metadata to calculate max allowed context_len cleanly.
 EXPERIMENTS = {
     'nn5_daily_without_missing': {'num_assets': 111, 'pred_len': 56, 'seq_len': 735},
     'nn5_weekly':                {'num_assets': 111, 'pred_len': 8,  'seq_len': 105},
@@ -61,10 +60,14 @@ EXPERIMENTS = {
     'hospital':                  {'num_assets': 767, 'pred_len': 12, 'seq_len': 72},
     'fred_md':                   {'num_assets': 107, 'pred_len': 12, 'seq_len': 716},
     'car_parts_without_missing': {'num_assets': 2674, 'pred_len': 12, 'seq_len': 39},
-    'traffic':                   {'num_assets': 862,  'pred_len': 24, 'seq_len': 14036},
-    'cif_2016':                  {'num_assets': 72,   'pred_len': 12, 'seq_len': 108},
-    'tourism_monthly':           {'num_assets': 366,  'pred_len': 24, 'seq_len': 163},
-    'tourism_quarterly':         {'num_assets': 427,  'pred_len': 8,  'seq_len': 55},
+    'traffic':                   {'num_assets': 862, 'pred_len': 24, 'seq_len': 14036},
+    'm1_monthly':                {'num_assets': 617, 'pred_len': 18, 'seq_len': 42},
+    'm1_quarterly':              {'num_assets': 203, 'pred_len': 8,  'seq_len': 40},
+    'm3_monthly':                {'num_assets': 1428, 'pred_len': 18, 'seq_len': 144},
+    'm3_quarterly':              {'num_assets': 756,  'pred_len': 8,  'seq_len': 72},
+    'cif_2016':                  {'num_assets': 72,  'pred_len': 12, 'seq_len': 108},
+    'tourism_monthly':           {'num_assets': 366, 'pred_len': 24, 'seq_len': 163},
+    'tourism_quarterly':         {'num_assets': 427, 'pred_len': 8,  'seq_len': 55},
 }
 
 # ── Template cấu hình (shared across experiments) ───────────
@@ -184,54 +187,44 @@ for dataset_name, exp_cfg in EXPERIMENTS.items():
     seq_len = exp_cfg['seq_len']
     pred_len = exp_cfg['pred_len']
     
-    # --- DYNAMIC DATASET HEURISTICS (Phase 2 Strict) ---
-    # Safe batch allocation strategy
-    safe_target = 64
+    # --- DYNAMIC DATASET HEURISTICS ---
+    # Safe batch allocation strategy: Total tokens roughly = B * N * Context
+    safe_target = 64  # Equivalent base: 8 batch * 8 assets (from exchange_rate)
     dynamic_batch_size = max(1, safe_target // num_assets)
     
-    # Skip if final checkpoint already exists to save time
-    final_cp = os.path.join(CHECKPOINT_DIR, f'SCMamba_v2_multi_{dataset_name}_Final.pth')
-    if os.path.exists(final_cp):
-        print(f"⏩ {dataset_name} already has a Final checkpoint. Skipping...")
-        results_summary.append({'dataset': dataset_name, 'status': '⏩ SKIPPED', 'details': 'Final CP exists'})
-        continue
-
-    # Outlier Reduction for problematic datasets
-    CURRENT_MAX_ASSETS = MAX_ASSETS
-    if dataset_name in ['traffic', 'tourism_monthly']:
-        CURRENT_MAX_ASSETS = 200  # Stricter limit for long-seq or high-variance memory hogs
-        print(f"   [Limit] {dataset_name} capped at {CURRENT_MAX_ASSETS} assets.")
-
-    # Fix 1: Dynamically calculate context_len
+    # Fix 1: Dynamically calculate context_len so Multivariate Loader doesn't crash on num_samples=0
+    # Minimum train seq required = context_len + pred_len >= seq_len. 
     max_allowed_context = max(24, seq_len - pred_len - 1)
     context_len = min(256, max_allowed_context)
-    
-    # Specific fix for Traffic (extremely long seq, save memory on context)
-    if dataset_name == 'traffic':
-        context_len = min(128, context_len)
 
-    # Refined OOM Scaling thresholds (Strict Phase 2)
-    if num_assets >= 300:
-        chunk_size = 16   # Max safety for high-N
-    elif num_assets >= 200:
-        chunk_size = 32   
-    elif num_assets >= 100:
-        chunk_size = 64
+    # Note: if seq_len is extremely small (e.g. car_parts with seq=39, pred=12),
+    # context will shrink to 26, enabling at least 1 training window.
+
+    # Refined OOM Scaling thresholds
+    if num_assets >= 2000:
+        chunk_size = 16   # car_parts (2.6k assets)
+    elif num_assets >= 800:
+        chunk_size = 32   # m3_monthly, traffic, hospital
+    elif num_assets >= 400:
+        chunk_size = 48   # tourism_quarterly, covid_deaths
+    elif num_assets >= 300:
+        chunk_size = 64   # tourism_monthly
     else:
-        chunk_size = 128
+        chunk_size = BASE_CONFIG['ssm_config']['chunk_size']
 
-    # Fix 3: Memory compression for high asset counts
+    # Fix 3: Memory compression for extremely high asset counts (context reduction)
     if num_assets >= 1000:
         context_len = min(128, context_len)
 
     # Fix 4: Asset Subsampling for Scalability
     col_indices = None
-    if num_assets > CURRENT_MAX_ASSETS:
-        print(f"   [Subsampling] {dataset_name}: {num_assets} → planning to keep {CURRENT_MAX_ASSETS}...")
+    if num_assets > MAX_ASSETS:
+        print(f"   [Subsampling] {dataset_name}: {num_assets} → planning to keep {MAX_ASSETS}...")
+        # Resolve PKL path to calculate variance
         REAL_VAL_DIR = os.path.join(PROJECT_ROOT, 'data', 'real_val_datasets')
         pkl_path = os.path.join(REAL_VAL_DIR, f'{dataset_name}_nopad_512.pkl')
         
-        col_indices = get_top_variance_indices(pkl_path, CURRENT_MAX_ASSETS)
+        col_indices = get_top_variance_indices(pkl_path, MAX_ASSETS)
         if col_indices:
             print(f"   [Subsampling] Kept Top-{len(col_indices)} most variable assets.")
             num_assets = len(col_indices)
