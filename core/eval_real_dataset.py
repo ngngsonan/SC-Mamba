@@ -557,10 +557,10 @@ def evaluate_real_dataset(dataset: str, model, scaler, context_len, eval_pred_le
     crps_vals = crps_gaussian(mu_np, sigma_np, y_np)
     mean_crps = float(crps_vals.mean())
 
-    # Scaled CRPS: normalize by data std for cross-dataset comparison.
-    # Raw CRPS is in original unit scale (e.g. 4M for CIF which has large values).
-    data_std = float(train_df_clean['target'].std()) if train_df_clean['target'].std() > 0 else 1.0
-    mean_crps_scaled = mean_crps / data_std
+    # mCRPS (Mean-Scaled CRPS): Normalize by Mean Absolute Value of target data for cross-dataset comparison.
+    # Raw CRPS is in original unit scale (e.g. 4M for CIF which has large values), standard deviation scaling is less stable.
+    mean_abs_target = float(train_df_clean['target'].abs().mean()) if train_df_clean['target'].abs().mean() > 0 else 1.0
+    mcrps = mean_crps / mean_abs_target
 
     out_dict = {
         'mase': mase_mean,
@@ -570,7 +570,7 @@ def evaluate_real_dataset(dataset: str, model, scaler, context_len, eval_pred_le
         'smape': float(smape_loss['pred'].mean()),
         'nll': float(mean_nll),
         'crps': mean_crps,
-        'crps_scaled': mean_crps_scaled,
+        'mcrps': mcrps,
     }
 
     return out_dict, train_df, pred_df

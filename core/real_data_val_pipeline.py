@@ -238,8 +238,7 @@ def validate_on_real_dataset(dataset: str, model, device, scaler, subday=False):
     # Probabilistic metrics — unique to SC-Mamba vs deterministic Mamba4Cast baseline
     mean_nll = float(pred_df['nll'].mean()) if 'nll' in pred_df.columns else float('nan')
 
-    # CRPS: closed-form for Gaussian predictive distribution
-    # Lower is better; comparable across datasets (scale-independent after normalisation)
+    # mCRPS (Mean-Scaled CRPS): Normalize by Mean Absolute Value of target data
     if 'variance' in pred_df.columns:
         sigma_np = np.sqrt(np.clip(pred_df['variance'].values, 1e-6, None))
         mu_np = pred_df['pred'].values
@@ -251,8 +250,12 @@ def validate_on_real_dataset(dataset: str, model, device, scaler, subday=False):
             - 1.0 / np.sqrt(np.pi)
         )
         mean_crps = float(crps_vals.mean())
+        # Scaling
+        mean_abs_target = float(train_df['target'].abs().mean()) if train_df['target'].abs().mean() > 0 else 1.0
+        mcrps = mean_crps / mean_abs_target
     else:
         mean_crps = float('nan')
+        mcrps = float('nan')
 
     # Drop INFs from MASE (e.g. constant series like some in car_parts)
     mase_vals = mase_loss['pred'].replace([float('inf'), float('-inf')], float('nan'))
@@ -260,6 +263,6 @@ def validate_on_real_dataset(dataset: str, model, device, scaler, subday=False):
 
     return (mase_mean, mae_loss['pred'].mean(),
             rmse_loss['pred'].mean(), smape_loss['pred'].mean(),
-            mean_nll, mean_crps)
+            mean_nll, mean_crps, mcrps)
 
 

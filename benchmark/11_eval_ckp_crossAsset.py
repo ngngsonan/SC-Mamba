@@ -17,18 +17,16 @@ import yaml
 from pprint import pprint
 
 # Setup paths and environment
-# sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-os.environ['TRITON_F32_DEFAULT'] = 'ieee'  # Triton compiler workaround
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+os.environ['TRITON_F32_DEFAULT'] = 'ieee'
 
 from core.models import SCMamba_Forecaster
 from core.real_data_val_pipeline import validate_on_real_dataset
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-# CKPT_DIR = os.path.join(os.path.dirname(__file__), '..', 'sc_mamba_checkpoints')
-SCALER   = 'min_max'   # must match training config
-
-# If you run on Colab, you might need to override CKPT_DIR:
-CKPT_DIR = '/content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints'
+SCALER   = 'min_max'
+CKPT_DIR = os.path.join(PROJECT_ROOT, 'checkpoints')
 
 # SSM config — must match your training config exactly
 SSM_CONFIG = {
@@ -81,7 +79,7 @@ def evaluate_model(
     Prints a formatted row suitable for comparison table.
     """
     print(f'\n🔍 Evaluating [{label}] on {dataset} ...')
-    mase_, mae_, rmse_, smape_, nll_, crps_ = validate_on_real_dataset(
+    mase_, mae_, rmse_, smape_, nll_, crps_, mcrps_ = validate_on_real_dataset(
         dataset, model, DEVICE, scaler, subday=sub_day
     )
     result = {
@@ -91,41 +89,29 @@ def evaluate_model(
         'MAE'    : round(mae_,   4),
         'RMSE'   : round(rmse_,  4),
         'SMAPE'  : round(smape_, 4),
-        'NLL'    : round(nll_,   4),   # ↓ better  (probabilistic, unique to SC-Mamba)
-        'CRPS'   : round(crps_,  4),   # ↓ better
+        'NLL'    : round(nll_,   4),
+        'mCRPS'  : round(mcrps_, 4),
     }
     print(f'  MASE={mase_:.4f} | MAE={mae_:.4f} | RMSE={rmse_:.4f} | '
-          f'SMAPE={smape_:.4f} | NLL={nll_:.4f} | CRPS={crps_:.4f}')
+          f'SMAPE={smape_:.4f} | NLL={nll_:.4f} | mCRPS={mcrps_:.4f}')
     return result
 
 
 def main():
-    # Checkpoint naming convention (set by train.py › generate_model_save_name):
-    #   N=1  → SCMamba_<version_univariate>_best.pth   (trained with num_assets=1)
-    #   N=8  → SCMamba_v_multivariate_exchange_rate_best.pth (trained with num_assets=8)
-
-    # Adjust the paths below to match your environment.
-    # Example using Colab paths:
-    ckpt_dir = '/content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints'
+    # Checkpoint names based on your local folder
+    ckpt_dir = CKPT_DIR
 
     ABLATION_CONFIGS = [
         {
             'label'      : 'N=1 (Univariate)',
-            'ckpt'       : f'{ckpt_dir}/SCMamba_v_config06_best_mase.pth',
+            'ckpt'       : os.path.join(ckpt_dir, 'SCMamba_v_config06_uni_17data_best_mase.pth'),
             'num_assets' : 1,
             'dataset'    : 'exchange_rate',
             'sub_day'    : False,
         },
         {
             'label'      : 'N=8 (Cross-Asset Graph)',
-            'ckpt'       : f'{ckpt_dir}/SCMamba_v_multi_exchange_rate_best_mase.pth',
-            'num_assets' : 8,
-            'dataset'    : 'exchange_rate',
-            'sub_day'    : False,
-        },
-        {
-            'label'      : 'N=8 (Cross-Asset Graph)',
-            'ckpt'       : f'{ckpt_dir}/SCMamba_v_multi_exchange_rate_best.pth',
+            'ckpt'       : os.path.join(ckpt_dir, 'SCMamba_v_config06_multi_best_mase.pth'),
             'num_assets' : 8,
             'dataset'    : 'exchange_rate',
             'sub_day'    : False,
@@ -163,17 +149,19 @@ def main():
     print('\n' + '='*70)
     print('  ABLATION RESULTS: exchange_rate — N=1 vs N=8')
     print('='*70)
-    print(df[['MASE','MAE','RMSE','SMAPE','NLL','CRPS']].to_string())
+    # Show mCRPS instead of CRPS
+    metric_cols = [c for c in ['MASE','MAE','RMSE','SMAPE','NLL','mCRPS'] if c in df.columns]
+    print(df[metric_cols].to_string())
     print('='*70)
     print('  ↓ lower is better for all metrics')
     print()
 
     # Relative improvement (N=8 vs N=1)
-    if len(df) == 2:
+    if len(df) >= 2:
         base  = df.iloc[0]   # N=1
         multi = df.iloc[1]   # N=8
         print('  Relative delta (N=8 - N=1) / |N=1|:')
-        for m in ['MASE','MAE','RMSE','SMAPE','NLL','CRPS']:
+        for m in metric_cols:
             delta_pct = (multi[m] - base[m]) / (abs(base[m]) + 1e-10) * 100
             arrow = '🟢' if delta_pct < 0 else '🔴'
             print(f'    {arrow}  {m:6s}: {delta_pct:+.1f}%')

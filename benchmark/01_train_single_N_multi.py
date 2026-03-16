@@ -92,7 +92,7 @@ BASE_CONFIG = {
     # Checkpoint
     'model_prefix'    : CHECKPOINT_DIR,
     'wandb'           : False,
-    'continue_training': True, # ← Train từ epoch 0 (không load checkpoint cũ)
+    'continue_training': False, # ← Train từ epoch 0 (không load checkpoint cũ)
 
     # Synthetic prior settings (shared structure, mix_frac set per experiment)
     'prior_config': {
@@ -163,7 +163,7 @@ for dataset_name, exp_cfg in EXPERIMENTS.items():
         **exp_cfg.get('spectral_config', {})
     }
     config['training_rounds']     = exp_cfg['training_rounds']
-    config['version']             = f'v_multi_{dataset_name}'
+    config['version']             = f'v2_multi_{dataset_name}'
 
     # real_train_datasets + real_test_datasets — both point to same dataset
     config['real_train_datasets'] = [dataset_name]  # ← activates MultivariateRealDataset
