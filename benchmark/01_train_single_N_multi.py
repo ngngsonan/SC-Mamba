@@ -1,4 +1,4 @@
-# @title training
+# @title 01_train_single_N_mnulti.py
 # ============================================================
 # 🚀 SC-Mamba — Cross-Asset Causal Graph Training
 # Trigger: num_assets > 1 + real_train_datasets → auto-activate

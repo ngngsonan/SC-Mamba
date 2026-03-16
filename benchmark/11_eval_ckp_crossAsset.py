@@ -1,6 +1,6 @@
-# @title 01_Ckp_Eval_CrossAsset
-""" 
-01_Ckp_Eval_CrossAsset.py
+# @title 11_eval_ckp_crossAsset
+"""
+11_eval_ckp_crossAsset.py
 ==============================
 Ablation evaluation script: num_assets=1 (univariate) vs num_assets=8 (cross-asset graph).
 
@@ -17,8 +17,8 @@ import yaml
 from pprint import pprint
 
 # Setup paths and environment
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+# SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+# PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 os.environ['TRITON_F32_DEFAULT'] = 'ieee'
 
 from core.models import SCMamba_Forecaster
@@ -26,7 +26,7 @@ from core.real_data_val_pipeline import validate_on_real_dataset
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 SCALER   = 'min_max'
-CKPT_DIR = os.path.join(PROJECT_ROOT, 'checkpoints')
+CKPT_DIR = '/content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints' #os.path.join(PROJECT_ROOT, 'checkpoints')
 
 # SSM config — must match your training config exactly
 SSM_CONFIG = {
@@ -94,7 +94,7 @@ def evaluate_model(
     }
     mase_val = result.get("MASE")
     mcrps_val = result.get("mCRPS")
-    
+
     mase_str = f"{mase_val:.4f}" if isinstance(mase_val, (int, float)) else "?"
     mcrps_str = f"{mcrps_val:.4f}" if isinstance(mcrps_val, (int, float)) else "?"
 
@@ -110,14 +110,21 @@ def main():
     ABLATION_CONFIGS = [
         {
             'label'      : 'N=1 (Univariate)',
-            'ckpt'       : os.path.join(ckpt_dir, 'SCMamba_v_config06_uni_17data_best_mase.pth'),
+            'ckpt'       : os.path.join(ckpt_dir, 'SCMamba_v_17data_N_uni_best_mase.pth'),
             'num_assets' : 1,
             'dataset'    : 'exchange_rate',
             'sub_day'    : False,
         },
         {
             'label'      : 'N=8 (Cross-Asset Graph)',
-            'ckpt'       : os.path.join(ckpt_dir, 'SCMamba_v_config06_multi_best_mase.pth'),
+            'ckpt'       : os.path.join(ckpt_dir, 'SCMamba_v2_multi_exchange_rate_best_mase.pth'),
+            'num_assets' : 8,
+            'dataset'    : 'exchange_rate',
+            'sub_day'    : False,
+        },
+        {
+            'label'      : 'N=8 (Cross-Asset Graph) best NLL',
+            'ckpt'       : os.path.join(ckpt_dir, 'SCMamba_v2_multi_exchange_rate_best.pth'),
             'num_assets' : 8,
             'dataset'    : 'exchange_rate',
             'sub_day'    : False,
