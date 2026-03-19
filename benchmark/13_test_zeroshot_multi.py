@@ -6,13 +6,13 @@ Zero-shot Foundation Model benchmark across GluonTS datasets.
 Supports N=8 multivariate checkpoints with random sub-sampling.
 =====================================================================
 """
-import os, sys, yaml, warnings
+import os, sys, yaml, warnings, subprocess
 import numpy as np, pandas as pd, torch
 from pathlib import Path
 
 # --- DIRECTORY SETUP (LOCAL/MAC ADAPTIVE) ---
-# SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-# PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..'))
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__)) if '__file__' in globals() else os.getcwd()
+PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..'))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
@@ -30,13 +30,19 @@ from core.models import SCMamba_Forecaster
 DEVICE      = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 CONTEXT_LEN = 256       
 N_ASSETS    = 8         
+UNI_ASSETS  = 1
 SCALER      = 'min_max' 
 SEEDS       = [7270, 860, 5390, 5191, 5734]
 
-# Checkpoint path (Using the multi-asset best MASE checkpoint)
-# colab_ckpt = '/content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints'
-# CKPT_DIR = colab_ckpt if os.path.exists(colab_ckpt) else os.path.join(PROJECT_ROOT, 'checkpoints')
-CHECKPOINT_PATH = os.path.join(CKPT_DIR, 'SCMamba_v2_multi_exchange_rate_best_mase.pth')
+# Checkpoints path configurations
+colab_ckpt = '/content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints'
+CKPT_DIR = colab_ckpt if os.path.exists(colab_ckpt) else os.path.join(PROJECT_ROOT, 'checkpoints')
+
+MODEL_TO_TEST = [
+    ('N=1 (Uni) v2 best_mase', os.path.join(CKPT_DIR, 'SCMamba_v2_17data_N_uni_best_mase.pth')),
+    ('N=1 (Uni) v2 best_NLL', os.path.join(CKPT_DIR, 'SCMamba_v2_17data_N_uni_best.pth')),
+    ('N=8 (Multi) v2 best_mase', os.path.join(CKPT_DIR, 'SCMamba_v2_multi_exchange_rate_best_mase.pth'))
+]
 
 # All 17 Target datasets
 TARGET_DATASETS = {
@@ -88,7 +94,7 @@ def load_model_from_checkpoint(ckpt_path, device):
         layer_indices = sorted(set(int(k.split('.')[2]) for k in state_dict.keys() if 'mamba_encoder_layers.' in k))
         ssm_config['num_encoder_layers'] = max(layer_indices) + 1 if layer_indices else 2
 
-    N_assets = ckpt.get('N_assets', N_ASSETS)
+    N_assets = UNI_ASSETS if 'uni' in os.path.basename(ckpt_path).lower() else ckpt.get('N_assets', N_ASSETS)
     model = SCMamba_Forecaster(N_assets=N_assets, ssm_config=ssm_config).to(device)
     model.load_state_dict(state_dict, strict=True)
     model.eval()
@@ -256,15 +262,33 @@ def canonical_evaluate(
             ts_x, ts_y = sample['ts_x'].to(device), sample['ts_y'].to(device)
 
             T_ctx, T_pred = x.shape[0], y.shape[0]
-            data = {
-                'history': x.permute(1, 0),
-                'ts': ts_x.unsqueeze(0).expand(N, -1, -1),
-                'target_dates': ts_y.unsqueeze(0).expand(N, -1, -1),
-                'task': torch.zeros(N, T_pred, dtype=torch.int32, device=device),
-            }
+            if getattr(model, 'N_assets', 1) == 1:
+                # Univariate model: Evaluate each asset independently
+                mu_list, sig_list = [], []
+                for asset_i in range(N):
+                    asset_data = {
+                        'history': x[:, asset_i:asset_i+1].permute(1, 0),
+                        'ts': ts_x.unsqueeze(0),
+                        'target_dates': ts_y.unsqueeze(0),
+                        'task': torch.zeros(1, T_pred, dtype=torch.int32, device=device),
+                    }
+                    asset_out = model(asset_data, prediction_length=T_pred)
+                    a_mu, a_sig = scale_data(asset_out, scaler)
+                    mu_list.append(a_mu); sig_list.append(a_sig)
+                scaled_mu = torch.cat(mu_list, dim=0)
+                scaled_sigma2 = torch.cat(sig_list, dim=0)
+            else:
+                # Multivariate model: Evaluate together
+                data = {
+                    'history': x.permute(1, 0),
+                    'ts': ts_x.unsqueeze(0).expand(N, -1, -1),
+                    'target_dates': ts_y.unsqueeze(0).expand(N, -1, -1),
+                    'task': torch.zeros(N, T_pred, dtype=torch.int32, device=device),
+                }
 
-            output = model(data, prediction_length=T_pred)
-            scaled_mu, scaled_sigma2 = scale_data(output, scaler)
+                output = model(data, prediction_length=T_pred)
+                scaled_mu, scaled_sigma2 = scale_data(output, scaler)
+                
             mu_np, sig_np, y_np = scaled_mu.cpu().numpy(), scaled_sigma2.cpu().numpy(), y.cpu().numpy()
 
             for asset_i in range(N):
@@ -387,33 +411,141 @@ def benchmark_dataset(ds_name, pred_len, model, device, seeds):
         'count': len(seed_results)
     }
 
-def main():
-    print(f"\n{'='*70}\n🚀 SC-Mamba Multi-Asset Zero-Shot Benchmark\n{'='*70}")
+def run_full_uni_evaluation(model_name, ckpt_path):
+    eval_dir = os.path.join(PROJECT_ROOT, 'data', 'real_data_evals', model_name, 'multipoint')
+    os.makedirs(eval_dir, exist_ok=True)
     
-    try:
-        model = load_model_from_checkpoint(CHECKPOINT_PATH, DEVICE)
-    except Exception as e:
-        print(f"❌ Load error: {e}")
-        return
+    missing = []
+    for ds in TARGET_DATASETS.keys():
+        if not os.path.exists(os.path.join(eval_dir, f'{ds}_512.yml')):
+            missing.append(ds)
+            
+    if missing:
+        print(f"    [Full-Uni Eval] Phân tích toàn tập dữ liệu (Missing {len(missing)} caches) bằng eval_real_dataset.py...")
+        # Lấy config cho Uni model (tạm thời lấy template config v_config06_uni_17data nếu có)
+        config_path = os.path.join(PROJECT_ROOT, 'core', 'config.v_config06_uni_17data.yaml')
+        if not os.path.exists(config_path):
+             config_path = os.path.join(PROJECT_ROOT, 'core', 'config.yaml')
+             
+        cmd = [
+            'python', os.path.join(PROJECT_ROOT, 'core', 'eval_real_dataset.py'),
+            '-c', ckpt_path,
+            '-o', model_name,
+            '-cfg', config_path
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode != 0:
+            print(f"    ⚠️ Warning: eval_real_dataset.py lỗi:\n{res.stderr}")
+            return None
+    return eval_dir
 
-    results = []
-    for ds, pl in TARGET_DATASETS.items():
-        res = benchmark_dataset(ds, pl, model, DEVICE, SEEDS)
-        if res: results.append(res)
+def read_full_uni_metrics(eval_dir, ds_name):
+    yml_path = os.path.join(eval_dir, f'{ds_name}_512.yml')
+    if os.path.exists(yml_path):
+        with open(yml_path) as f:
+            raw = yaml.safe_load(f)
+            if raw:
+                metrics = next(iter(raw.values()), {})
+                m_mase = metrics.get('mase', float('nan'))
+                m_crps = metrics.get('mcrps')
+                if m_crps is None:
+                    m_crps = metrics.get('crps_scaled', float('nan'))
+                return {
+                    'mase_full': float(m_mase),
+                    'mcrps_full': float(m_crps),
+                }
+    return {'mase_full': float('nan'), 'mcrps_full': float('nan')}
 
-    if not results:
+def main():
+    print(f"\n{'='*110}\n🚀 SC-Mamba Zero-Shot Comparison: N=1 (Full & Subset 8) vs N=8 (Subset 8)\n{'='*110}")
+    
+    all_summaries = []
+
+    for label, path in MODEL_TO_TEST:
+        print(f"\n▶️ Testing {label}...")
+        try:
+            model = load_model_from_checkpoint(path, DEVICE)
+        except Exception as e:
+            print(f"❌ Load error for {label}: {e}")
+            continue
+
+        # Kiểm tra xem đây có phải là Univariate model không (N_assets = 1)
+        is_uni = getattr(model, 'N_assets', 1) == 1
+        full_uni_eval_dir = None
+        if is_uni:
+            model_name = os.path.basename(path).replace('.pth', '')
+            full_uni_eval_dir = run_full_uni_evaluation(model_name, path)
+
+        results = []
+        for ds, pl in TARGET_DATASETS.items():
+            res = benchmark_dataset(ds, pl, model, DEVICE, SEEDS)
+            if res: 
+                res['model'] = label
+                
+                # Nạp thêm Full metrics nếu là Uni model
+                if is_uni and full_uni_eval_dir:
+                    full_mets = read_full_uni_metrics(full_uni_eval_dir, ds)
+                    res.update(full_mets)
+                else:
+                    res.update({'mase_full': np.nan, 'mcrps_full': np.nan})
+                    
+                results.append(res)
+
+        if results:
+            df_m = pd.DataFrame(results)
+            all_summaries.append(df_m)
+            print(f"✅ {label} complete. Avg MASE: {df_m['mase'].mean():.4f}")
+
+    if not all_summaries:
         print("No results generated.")
         return
 
-    df = pd.DataFrame(results)
-    print(f"\n{'='*85}")
-    print(f"{'Dataset':<30} {'MASE':>10} {'mCRPS':>10} {'MAE':>10} {'NLL':>10}")
-    print(f"{'─'*85}")
-    for _, r in df.iterrows():
-        print(f"{r['dataset']:<30} {r['mase']:>10.4f} {r['mcrps']:>10.4f} {r['mae']:>10.4f} {r['nll']:>10.4f}")
-    print(f"{'─'*85}")
-    print(f"💎 Avg MASE: {df['mase'].mean():.4f} | Avg mCRPS: {df['mcrps'].mean():.4f}")
-    print(f"{'='*85}\n✅ Zero-shot Multi complete.")
+    # Merge and Print Final Comparison
+    final_df = pd.concat(all_summaries)
+
+    pd.options.display.float_format = '{:,.4f}'.format
+    
+    print(f"\n{'='*125}")
+    print(f"{'Dataset':<26} {'Model':<26} | {'MASE (Subset 8)':>15} {'mCRPS (Subset 8)':>16} | {'MASE (Full All)':>15} {'mCRPS (Full All)':>16}")
+    print(f"{'─'*125}")
+    
+    pivot_mase_sub = final_df.pivot(index='dataset', columns='model', values='mase')
+    pivot_mcrps_sub = final_df.pivot(index='dataset', columns='model', values='mcrps')
+
+    for ds in TARGET_DATASETS.keys():
+        if ds in pivot_mase_sub.index:
+            for lbl, _ in MODEL_TO_TEST:
+                # Trích xuất dữ liệu của model & dataset
+                row_data = final_df[(final_df['dataset'] == ds) & (final_df['model'] == lbl)]
+                if not row_data.empty:
+                    row = row_data.iloc[0]
+                    
+                    m_sub = row['mase']
+                    c_sub = row['mcrps']
+                    m_full = row.get('mase_full', np.nan)
+                    c_full = row.get('mcrps_full', np.nan)
+                    
+                    m_sub_str = f"{m_sub:>15.4f}" if not pd.isna(m_sub) else f"{'-':>15}"
+                    c_sub_str = f"{c_sub:>16.4f}" if not pd.isna(c_sub) else f"{'-':>16}"
+                    
+                    m_f_str = f"{m_full:>15.4f}" if not pd.isna(m_full) else f"{'-':>15}"
+                    c_f_str = f"{c_full:>16.4f}" if not pd.isna(c_full) else f"{'-':>16}"
+                    
+                    print(f"{ds:<26} {lbl:<26} | {m_sub_str} {c_sub_str} | {m_f_str} {c_f_str}")
+            print(f"{'─'*125}")
+
+    # Global Average Summary
+    summary = final_df.groupby('model').agg({
+        'mase': 'mean', 
+        'mcrps': 'mean', 
+        'mase_full': lambda x: np.nanmean(x) if x.notna().any() else np.nan,
+        'mcrps_full': lambda x: np.nanmean(x) if x.notna().any() else np.nan
+    }).rename(columns={'mase': 'MASE (Sub8)', 'mcrps': 'mCRPS (Sub8)', 'mase_full': 'MASE (Full)', 'mcrps_full': 'mCRPS (Full)'})
+    
+    print(f"\nGLOBAL SUMMARY (Averaged across datasets):")
+    print(summary.to_string(float_format='%.4f', na_rep='-'))
+    print(f"{'='*125}\n✅ Multi-checkpoint & Uni/Multi Validation benchmark complete.")
+
 
 # if __name__ == "__main__":
 main()

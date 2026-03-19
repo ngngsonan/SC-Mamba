@@ -1,0 +1,125 @@
+seed: 42
+debugging: false
+scaler: min_max
+sin_pos_enc: false
+sin_pos_const: false
+encoding_dropout: 0.1
+handle_constants_model: true
+# num_assets: 1
+sub_day: true
+ssm_config:
+  bidirectional: false
+  enc_conv: true
+  init_dil_conv: true
+  enc_conv_kernel: 5
+  init_conv_kernel: 5
+  init_conv_max_dilation: 3
+  global_residual: false
+  in_proj_norm: false
+  initial_gelu_flag: true
+  linear_seq: 15
+  mamba2: true
+  norm: true
+  norm_type: layernorm
+  num_encoder_layers: 2
+  d_state: 128
+  residual: false
+  token_embed_len: 1024
+  block_expansion: 2
+  chunk_size: 256
+  headdim: 128
+num_epochs: 100
+training_rounds: 200
+validation_rounds: 50
+real_test_interval: 5
+lr_scheduler: cosine
+initial_lr: 5.0e-05
+learning_rate: 1.0e-07
+t_max: -1
+context_len: 256
+min_seq_len: 30
+max_seq_len: 256
+pred_len: 60
+pred_len_min: 10
+pred_len_sample: true
+batch_size: 64
+no_pos_enc: false
+loss: nll
+beta_kl: 0.1
+multipoint: true
+sample_multi_pred: 0.5
+diag_prints: true
+nll_detach: true
+model_prefix: /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints
+wandb: false
+continue_training: false
+version: v3_17data_N_uni
+real_train_datasets:
+- car_parts_without_missing
+- cif_2016
+- covid_deaths
+- ercot
+- exchange_rate
+- fred_md
+- hospital
+- m1_monthly
+- m1_quarterly
+- m3_monthly
+- m3_quarterly
+- nn5_daily_without_missing
+- nn5_weekly
+- tourism_monthly
+- tourism_quarterly
+- traffic
+- weather
+real_test_datasets:
+- exchange_rate
+- fred_md
+- m1_monthly
+prior_config:
+  prior_mix_frac: 1
+  curriculum_learning: false
+  mixup_prob: 0.0
+  mixup_series: 4
+  damp_and_spike: true
+  damping_noise_ratio: 0.05
+  spike_noise_ratio: 0.05
+  spike_signal_ratio: 0.05
+  spike_batch_ratio: 0.05
+  fp_options:
+    linear_random_walk_frac: 0
+    seasonal_only: false
+    scale_noise:
+    - 0.6
+    - 0.3
+    trend_exp: false
+    harmonic_scale_ratio: 0.4
+    harmonic_rate: 0.75
+    trend_additional: true
+    transition_ratio: 0.0
+  gp_prior_config:
+    max_kernels: 6
+    likelihood_noise_level: 0.4
+    noise_level: random
+    use_original_gp: false
+    gaussians_periodic: true
+    peak_spike_ratio: 0.1
+    subfreq_ratio: 0.2
+    periods_per_freq: 0.5
+    gaussian_sampling_ratio: 0.2
+    kernel_periods:
+    - 4
+    - 5
+    - 7
+    - 21
+    - 24
+    - 30
+    - 60
+    - 120
+    max_period_ratio: 1.0
+    kernel_bank:
+      matern_kernel: 1.5
+      linear_kernel: 1
+      periodic_kernel: 5
+      polynomial_kernel: 0
+      spectral_mixture_kernel: 0

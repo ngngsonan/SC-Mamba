@@ -397,10 +397,6 @@ def multivariate_predict_aligned(
             output = model(data, prediction_length=T_pred)
             scaled_mu, scaled_sigma2 = scale_data(output, scaler)
 
-            # Optimization: Clear GPU cache immediately after inference for large models
-            if N >= 100:
-                torch.cuda.empty_cache()
-
             # mu/sigma2 shape: (N, T_pred)
             mu_np    = scaled_mu.detach().cpu().numpy()       # (N, T_pred)
             sig_np   = scaled_sigma2.detach().cpu().numpy()   # (N, T_pred)
@@ -437,6 +433,136 @@ def multivariate_predict_aligned(
     return batch_train_dfs, batch_pred_dfs
 
 
+def multivariate_predict_chunked(
+    model,
+    dataset: str,
+    pred_len: int,
+    scaler: str,
+    device,
+    sub_day: bool = False,
+    context_len: int = None,
+) -> tuple:
+    import math
+    import warnings
+    from data.data_provider.multivariate_loader import MultivariateRealDataset
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    data_dir  = os.path.join(base_dir, '..', 'data', 'real_val_datasets')
+    
+    config_file = os.path.join(base_dir, 'real_data_args.yaml')
+    with open(config_file) as file:
+        real_data_args = yaml.load(file, yaml.loader.SafeLoader)
+    
+    if real_data_args.get('pad', False):
+        pkl_path = os.path.join(data_dir, f'{dataset}_pad_{MAX_LENGTH}.pkl')
+    else:
+        pkl_path = os.path.join(data_dir, f'{dataset}_nopad_{MAX_LENGTH}.pkl')
+
+    N = model.N_assets
+    if context_len is None:
+        context_len = MAX_LENGTH
+
+    try:
+        probe_ds = MultivariateRealDataset(
+            pkl_path, pred_len=pred_len, context_len=context_len,
+            split='test', N_assets=None, sub_day=sub_day
+        )
+        actual_M = probe_ds.N_assets
+    except ValueError as e:
+        print(f"⚠️ [Chunked Eval] Probe failed: {e}")
+        return [], []
+
+    batch_train_dfs = []
+    batch_pred_dfs  = []
+    model.eval()
+
+    K = math.ceil(actual_M / N)
+    print(f"  [eval] Chunked Multivariate Eval ON: Dataset={actual_M} assets → {K} chunks of size {N}.")
+
+    warnings.filterwarnings("ignore", category=RuntimeWarning, module="data.data_provider.multivariate_loader")
+
+    with torch.no_grad():
+        for k in range(K):
+            start_idx = k * N
+            end_idx = min((k+1) * N, actual_M)
+            valid_len = end_idx - start_idx
+            
+            col_indices = list(range(start_idx, end_idx))
+            
+            if valid_len < N:
+                pad_needed = N - valid_len
+                col_indices += [col_indices[i % valid_len] for i in range(pad_needed)]
+
+            test_ds = MultivariateRealDataset(
+                pkl_path, pred_len=pred_len, context_len=context_len,
+                split='test', N_assets=N, sub_day=sub_day, col_indices=col_indices
+            )
+            train_ds = MultivariateRealDataset(
+                pkl_path, pred_len=pred_len, context_len=context_len,
+                split='train', N_assets=N, sub_day=sub_day, col_indices=col_indices
+            )
+
+            for win_idx in range(len(test_ds)):
+                sample = test_ds[win_idx]
+                x    = sample['x'].to(device)    
+                y    = sample['y'].to(device)    
+                ts_x = sample['ts_x'].to(device) 
+                ts_y = sample['ts_y'].to(device) 
+
+                T_ctx  = x.shape[0]
+                T_pred = y.shape[0]
+
+                history  = x.permute(1, 0)
+                ts_x_rep = ts_x.unsqueeze(0).expand(N, -1, -1)
+                ts_y_rep = ts_y.unsqueeze(0).expand(N, -1, -1)
+
+                data = {
+                    'history'      : history,
+                    'ts'           : ts_x_rep,
+                    'target_dates' : ts_y_rep,
+                    'task'         : torch.zeros(N, T_pred, dtype=torch.int32, device=device),
+                }
+
+                output = model(data, prediction_length=T_pred)
+                scaled_mu, scaled_sigma2 = scale_data(output, scaler)
+
+                mu_np    = scaled_mu.detach().cpu().numpy()       
+                sig_np   = scaled_sigma2.detach().cpu().numpy()   
+                y_np     = y.cpu().numpy()                        
+
+                for asset_in_chunk in range(valid_len):
+                    asset_i_global = start_idx + asset_in_chunk
+                    asset_id = f"{dataset}_asset_{asset_i_global}"
+                    
+                    if len(train_ds) > 0:
+                        train_sample = train_ds[len(train_ds) - 1]
+                        train_hist_i = train_sample['x'][:, asset_in_chunk].numpy()
+                    else:
+                        train_hist_i = x[:, asset_in_chunk].cpu().numpy()
+
+                    batch_train_dfs.append(pd.DataFrame({
+                        'id':     [asset_id] * len(train_hist_i),
+                        'target': train_hist_i,
+                    }))
+
+                    nll_vals = nll_eval(
+                        torch.tensor(mu_np[asset_in_chunk]),
+                        torch.tensor(sig_np[asset_in_chunk]),
+                        torch.tensor(y_np[:, asset_in_chunk]),
+                    ).numpy()
+
+                    batch_pred_dfs.append(pd.DataFrame({
+                        'id':       [asset_id] * T_pred,
+                        'pred':     mu_np[asset_in_chunk],
+                        'target':   y_np[:, asset_in_chunk],
+                        'variance': sig_np[asset_in_chunk],
+                        'nll':      nll_vals,
+                    }))
+
+    warnings.filterwarnings("default", category=RuntimeWarning, module="data.data_provider.multivariate_loader")
+    return batch_train_dfs, batch_pred_dfs
+
+
 def evaluate_real_dataset(dataset: str, model, scaler, context_len, eval_pred_len, device, pred_style=None, sub_day=None):
     # Use absolute path for real_data_args.yaml (same dir as this script)
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -466,20 +592,24 @@ def evaluate_real_dataset(dataset: str, model, scaler, context_len, eval_pred_le
     seasonality = get_seasonality(gts_dataset.metadata.freq) if gts_dataset.metadata.freq != 'D' else 7
     print(seasonality)
 
-    # ── Cross-Asset Multivariate path ───────────────────────────────────────
-    # Activated ONLY when model was trained with num_assets > 1 on this dataset.
-    # Full backward-compat: when model.N_assets == 1, skips to the original path.
+    # ── Model Path Router ───────────────────────────────────────────────────
     _model_n = getattr(model, 'N_assets', 1)
     _ds_n    = REAL_DATASET_ASSETS.get(dataset, 1)
-    _use_mv_eval = (_model_n > 1 and _model_n == _ds_n)
 
-    if _use_mv_eval:
-        print(f"[eval] Multivariate aligned eval: N_assets={_model_n}")
-        batch_train_dfs, batch_pred_dfs = multivariate_predict_aligned(
-            model=model, dataset=dataset, pred_len=pred_len,
-            scaler=scaler, device=device, sub_day=sub_day,
-            context_len=context_len,
-        )
+    if _model_n > 1:
+        if _model_n == _ds_n:
+            print(f"  [eval] Multivariate EXACT-aligned eval: N_assets={_model_n}")
+            batch_train_dfs, batch_pred_dfs = multivariate_predict_aligned(
+                model=model, dataset=dataset, pred_len=pred_len,
+                scaler=scaler, device=device, sub_day=sub_day,
+                context_len=context_len,
+            )
+        else:
+            batch_train_dfs, batch_pred_dfs = multivariate_predict_chunked(
+                model=model, dataset=dataset, pred_len=pred_len,
+                scaler=scaler, device=device, sub_day=sub_day,
+                context_len=context_len,
+            )
     else:
         # ── Original univariate path (num_assets=1) ───────────────────────
         batch_train_dfs = []
