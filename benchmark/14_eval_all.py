@@ -1,18 +1,15 @@
 # @title 14_eval_all.py
 """
-14_eval_all.py — Gold-Standard Universal Zero-Shot Benchmark
-============================================================
-Evaluates ALL checkpoints (Uni N=1, Multi N>1) across ALL 17 GluonTS datasets.
+14_eval_all.py — Gold-Standard Multivariate Zero-Shot Benchmark (Asset-dimension Chunking)
+========================================================================================
+Evaluates Multivariate (N>1) SC-Mamba models across ALL 17 GluonTS datasets.
+(Note: Univariate N=1 evaluation is handled separately in `12_eval ckp_N_uni.py`
+ using the original time-axis and full dataset cardinality).
 
-Dual Protocol (Area Chair approved):
-  N=1 → subprocess → eval_real_dataset.py (same as script 12)
-        Uses ORIGINAL data_provider, covers ALL M assets, original timeline.
-        Results cached as .yml files (universal comparison currency).
-
-  N>1 → Inline Asset-dimension Chunking
-        K = ⌈M/N⌉ sequential chunks via RobustZeroShotDataset.
-        Produces SAME cardinality as N=1 for fair Apple-to-Apple comparison.
-============================================================
+For N>1 models, this script implements Apple-to-Apple "Asset-dimension Chunking":
+  - K = ⌈M/N⌉ sequential chunks via RobustZeroShotDataset.
+  - Test sets with length < context_len correctly pad their historical context (0-windows bug fixed).
+========================================================================================
 """
 
 import os, sys, yaml, warnings, pickle, math, time, traceback, subprocess
@@ -47,17 +44,8 @@ SCALER      = 'min_max'
 TARGET_DATASETS = dict(REAL_DATASETS)  # Import from eval_real_dataset.py
 
 # Format: (label, checkpoint_path, config_yaml_path)
+# Only testing Multivariate N>1 models here.
 MODEL_TO_TEST = [
-    (
-        'N=1 MASE',
-        os.path.join(CKPT_DIR, 'SCMamba_v3_17data_N_uni_best.pth'),
-        os.path.join(PROJECT_ROOT, 'core', 'config.based_setup.yaml'),
-    ),
-    (
-        'N=1 NLL',
-        os.path.join(CKPT_DIR, 'SCMamba_v3_17data_N_uni_best_mase.pth'),
-        os.path.join(PROJECT_ROOT, 'core', 'config.based_setup.yaml'),
-    ),
     (
         'N=8 (Chunked)',
         os.path.join(CKPT_DIR, 'SCMamba_v3_multi_exchange_rate_best.pth'),
@@ -75,8 +63,7 @@ _STRIP_SUFFIXES = ('_best_mase', '_best', '_Final')
 # Utilities
 # ─────────────────────────────────────────────────────────────────────────────
 def derive_model_name(ckpt_path):
-    """Derive cache directory name from checkpoint filename.
-    Must EXACTLY mirror eval_real_dataset.py::main_evaluator suffix stripping."""
+    """Derive cache directory name from checkpoint filename."""
     name = os.path.basename(ckpt_path).replace('.pth', '')
     for suffix in _STRIP_SUFFIXES:
         if name.endswith(suffix):
@@ -99,75 +86,10 @@ def ensure_datasets():
     missing = [ds for ds in TARGET_DATASETS
                if not os.path.exists(os.path.join(REAL_VAL_DIR, f'{ds}_nopad_512.pkl'))]
     if missing:
+        import subprocess
         print(f"\n🔄 Generating {len(missing)} missing dataset(s) from GluonTS...")
         subprocess.run([sys.executable,
                         os.path.join(PROJECT_ROOT, 'data', 'scripts', 'store_real_datasets.py')])
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# PATH A: N=1 Evaluation via subprocess → eval_real_dataset.py
-# ═══════════════════════════════════════════════════════════════════════════════
-def eval_uni_via_subprocess(ckpt_path, config_path, model_name):
-    """
-    Run eval_real_dataset.py as subprocess (same code path as script 12).
-    Uses the ORIGINAL data_provider → covers ALL M assets on original timeline.
-    This is the Gold Standard for Univariate evaluation.
-    """
-    eval_dir = os.path.join(PROJECT_ROOT, 'data', 'real_data_evals', model_name, 'multipoint')
-
-    # Check which datasets already have cached results
-    missing = [ds for ds in TARGET_DATASETS
-               if not os.path.exists(os.path.join(eval_dir, f'{ds}_512.yml'))]
-
-    if not missing:
-        print(f"    ✅ All {len(TARGET_DATASETS)} datasets cached. Skipping subprocess.")
-    else:
-        print(f"    ▶️ {len(missing)}/{len(TARGET_DATASETS)} datasets need evaluation.")
-        print(f"    Running eval_real_dataset.py ...")
-
-        cmd = [
-            sys.executable,
-            os.path.join(PROJECT_ROOT, 'core', 'eval_real_dataset.py'),
-            '-c', ckpt_path,
-            '-o', model_name,
-        ]
-        if config_path and os.path.exists(config_path):
-            cmd.extend(['-cfg', config_path])
-        else:
-            print(f"    ⚠️ Config not found: {config_path}")
-
-        print(f"    CMD: {' '.join(cmd)}")
-        result = subprocess.run(
-            cmd,
-            env=dict(os.environ, MKL_NUM_THREADS="1"),
-            capture_output=False,  # Show ALL output for debugging
-        )
-        if result.returncode != 0:
-            print(f"    ⚠️ eval subprocess exited with code {result.returncode}.")
-
-    # Read cached .yml results
-    results = {}
-    for ds in TARGET_DATASETS:
-        yml_path = os.path.join(eval_dir, f'{ds}_512.yml')
-        if not os.path.exists(yml_path):
-            results[ds] = {'mase': np.nan, 'mcrps': np.nan}
-            continue
-        try:
-            with open(yml_path) as f:
-                raw = yaml.safe_load(f)
-            if raw:
-                metrics = next(iter(raw.values()), {})
-                m_mase = float(metrics.get('mase', np.nan))
-                m_mcrps = metrics.get('mcrps')
-                if m_mcrps is None:
-                    m_mcrps = metrics.get('crps_scaled', np.nan)
-                results[ds] = {'mase': m_mase, 'mcrps': float(m_mcrps) if m_mcrps is not None else np.nan}
-            else:
-                results[ds] = {'mase': np.nan, 'mcrps': np.nan}
-        except Exception as e:
-            print(f"    ⚠️ Error parsing {yml_path}: {e}")
-            results[ds] = {'mase': np.nan, 'mcrps': np.nan}
-    return results
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -226,35 +148,36 @@ class RobustZeroShotDataset(torch.utils.data.Dataset):
         n_test = pred_len
         min_train_required = context_len + pred_len
 
-        if T_total < min_train_required + pred_len:
-            self.n_windows = 0
-            self._start = 0
-            self._end = T_total
-            self._split = split
-            self._val_target_start = 0
-            self._test_target_start = 0
-            return
-
-        max_val_allowed = max(pred_len, T_total - n_test - min_train_required)
-        n_val = min(max(pred_len, 30), max_val_allowed)
-        train_end = max(T_total - n_test - n_val, min_train_required)
+        # CRITICAL FIX for asynchronous/short datasets:
+        # Guarantee at least 1 testing window even if T_total < min_train_required + pred_len
+        ideal_train_end = T_total - n_test - min(max(pred_len, 30), max(pred_len, T_total - n_test - min_train_required))
+        train_end = max(ideal_train_end, min_train_required)
+        
+        # Extreme fallback: if dataset is even smaller than 1 window, use all for train
         if train_end > T_total:
             train_end = T_total
 
         if split == 'train':
-            self._start, self._end = 0, train_end
+            self._start = 0
+            self._end = train_end
             self.n_windows = max(0, train_end - context_len - pred_len + 1)
+        
         elif split == 'val':
-            self._start = max(0, T_total - n_test - n_val - context_len)
-            self._end = T_total - n_test
+            n_val = min(max(pred_len, 30), max(pred_len, T_total - n_test - min_train_required))
+            val_target_start = T_total - n_test - n_val
+            val_target_end = T_total - n_test
+            self._start = max(0, val_target_start - context_len)
+            self._end = val_target_end
             self.n_windows = max(0, n_val - pred_len + 1)
+        
         else:  # test
-            self._start = max(0, T_total - n_test - context_len)
+            test_target_start = T_total - n_test
+            self._start = max(0, test_target_start - context_len)
             self._end = T_total
             self.n_windows = max(0, n_test - pred_len + 1)
 
         self._split = split
-        self._val_target_start = T_total - n_test - n_val
+        self._val_target_start = T_total - n_test - min(max(pred_len, 30), max(pred_len, T_total - n_test - min_train_required))
         self._test_target_start = T_total - n_test
 
     def __len__(self):
@@ -287,8 +210,21 @@ class RobustZeroShotDataset(torch.utils.data.Dataset):
             x = self.values[abs_start:ctx_end]
             ts_x = self.ts_feats[abs_start:ctx_end]
 
-        y = self.values[ctx_end:tgt_end]
-        ts_y = self.ts_feats[ctx_end:tgt_end]
+        # Handle prediction length padding if test set is extremely short (T_total < pred_len)
+        y_actual_len = tgt_end - ctx_end
+        if y_actual_len < self.pred_len:
+            pad_y = self.pred_len - y_actual_len
+            y = np.concatenate([
+                self.values[ctx_end:tgt_end],
+                np.zeros((pad_y, self.N_assets), dtype=np.float32)
+            ], axis=0)
+            ts_y = np.concatenate([
+                self.ts_feats[ctx_end:tgt_end],
+                np.zeros((pad_y, self.ts_feats.shape[1]), dtype=np.float32)
+            ], axis=0)
+        else:
+            y = self.values[ctx_end:tgt_end]
+            ts_y = self.ts_feats[ctx_end:tgt_end]
 
         return {
             'x': torch.from_numpy(x), 'y': torch.from_numpy(y),
@@ -376,7 +312,10 @@ def evaluate_chunk(model, pkl_path, pred_len, context_len,
 
             for ai in range(N):
                 aid = f"asset_{col_indices[ai]}"
+                # Even if len(train_ds) == 0, train_ds.values contains all historical data
                 train_hist = train_ds.values[:, ai]
+                if len(train_hist) == 0:
+                     train_hist = np.zeros(1) # fallback array to avoid pd.concat failures
                 batch_train_dfs.append(pd.DataFrame({
                     'id': [aid] * len(train_hist), 'target': train_hist,
                 }))
@@ -433,7 +372,6 @@ def compute_metrics(batch_train_dfs, batch_pred_dfs, ds_name):
 def eval_chunked_dataset(model, ds_name, pred_len, device, sub_day):
     """
     Asset-dimension Chunking: evaluate ALL M assets via K=⌈M/N⌉ chunks.
-    Only for N>1 models.
     """
     N = getattr(model, 'N_assets', 1)
     pkl_path = os.path.join(REAL_VAL_DIR, f'{ds_name}_nopad_512.pkl')
@@ -491,9 +429,8 @@ def eval_chunked_dataset(model, ds_name, pred_len, device, sub_day):
 # ═══════════════════════════════════════════════════════════════════════════════
 def main():
     print(f"\n{'='*110}")
-    print(f"🚀 SC-Mamba Gold-Standard Zero-Shot Benchmark (17 Datasets)")
-    print(f"   N=1: Full-dataset via eval_real_dataset.py (same as SOTA baselines)")
-    print(f"   N>1: Asset-dimension Chunking (⌈M/N⌉ chunks)")
+    print(f"🚀 SC-Mamba Gold-Standard Zero-Shot Benchmark (Multivariate Only)")
+    print(f"   (17 Datasets Evaluated via Asset-dimension Chunking)")
     print(f"   Device: {DEVICE}")
     print(f"{'='*110}\n")
 
@@ -520,56 +457,45 @@ def main():
 
         model_labels.append(label)
 
-        if n_assets == 1:
-            # ── PATH A: N=1 → subprocess (Gold Standard Univariate) ──────
-            print(f"  🔬 [PATH A] Univariate Full-Dataset eval via subprocess...")
-            ds_results = eval_uni_via_subprocess(ckpt_path, config_path, model_name)
-            for ds, metrics in ds_results.items():
+        print(f"  🔬 [PATH B] Multivariate Asset-dimension Chunking (N={n_assets})...")
+        try:
+            model, sub_day = load_model(ckpt_path, config_path, DEVICE)
+        except Exception as e:
+            print(f"   ❌ Load failed: {e}")
+            traceback.print_exc()
+            for ds in TARGET_DATASETS:
                 all_results.append({
                     'Model': label, 'Dataset': ds,
+                    'MASE': np.nan, 'mCRPS': np.nan,
+                })
+            continue
+
+        for ds_name, pred_len in TARGET_DATASETS.items():
+            t0 = time.time()
+            try:
+                metrics = eval_chunked_dataset(model, ds_name, pred_len, DEVICE, sub_day)
+            except Exception as e:
+                print(f"    ❌ {ds_name} EXCEPTION: {e}")
+                traceback.print_exc()
+                metrics = None
+
+            elapsed = time.time() - t0
+            if metrics:
+                all_results.append({
+                    'Model': label, 'Dataset': ds_name,
                     'MASE': metrics['mase'], 'mCRPS': metrics['mcrps'],
                 })
-        else:
-            # ── PATH B: N>1 → inline chunked eval ────────────────────────
-            print(f"  🔬 [PATH B] Multivariate Asset-dimension Chunking (N={n_assets})...")
-            try:
-                model, sub_day = load_model(ckpt_path, config_path, DEVICE)
-            except Exception as e:
-                print(f"   ❌ Load failed: {e}")
-                traceback.print_exc()
-                for ds in TARGET_DATASETS:
-                    all_results.append({
-                        'Model': label, 'Dataset': ds,
-                        'MASE': np.nan, 'mCRPS': np.nan,
-                    })
-                continue
+                print(f"    ⏱️  {elapsed:.1f}s")
+            else:
+                all_results.append({
+                    'Model': label, 'Dataset': ds_name,
+                    'MASE': np.nan, 'mCRPS': np.nan,
+                })
+                print(f"    ⏱️  {elapsed:.1f}s (FAILED)")
 
-            for ds_name, pred_len in TARGET_DATASETS.items():
-                t0 = time.time()
-                try:
-                    metrics = eval_chunked_dataset(model, ds_name, pred_len, DEVICE, sub_day)
-                except Exception as e:
-                    print(f"    ❌ {ds_name} EXCEPTION: {e}")
-                    traceback.print_exc()
-                    metrics = None
-
-                elapsed = time.time() - t0
-                if metrics:
-                    all_results.append({
-                        'Model': label, 'Dataset': ds_name,
-                        'MASE': metrics['mase'], 'mCRPS': metrics['mcrps'],
-                    })
-                    print(f"    ⏱️  {elapsed:.1f}s")
-                else:
-                    all_results.append({
-                        'Model': label, 'Dataset': ds_name,
-                        'MASE': np.nan, 'mCRPS': np.nan,
-                    })
-                    print(f"    ⏱️  {elapsed:.1f}s (FAILED)")
-
-            del model
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+        del model
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     if not all_results:
         print("\n❌ No results. Check checkpoints.")
@@ -619,7 +545,7 @@ def main():
     print(f"\n📊 GLOBAL SUMMARY (Mean across {len(TARGET_DATASETS)} datasets):\n")
     print(summary.to_string(float_format='%.4f', na_rep='—'))
     print(f"\n{'='*sep_w}")
-    print(f"✅ Gold-Standard Benchmark complete.\n")
+    print(f"✅ Multivariate Benchmark complete.\n")
 
 
 # if __name__ == '__main__':
