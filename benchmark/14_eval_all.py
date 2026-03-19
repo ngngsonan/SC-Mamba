@@ -1,28 +1,31 @@
 # @title 14_eval_all.py
 """
-14_eval_all.py — Self-Contained Universal Zero-Shot Benchmark
-=============================================================
+14_eval_all.py — Gold-Standard Universal Zero-Shot Benchmark
+============================================================
 Evaluates ALL checkpoints (Uni N=1, Multi N>1) across ALL 17 GluonTS datasets.
 
-For N>1 models, uses **Asset-dimension Chunking**: the full dataset (M assets)
-is split into ceil(M/N) chunks of size N, with circular-padding on the last
-chunk. This produces a fair Apple-to-Apple comparison with Univariate SOTA
-(Chronos, MOIRAI, TimesFM, Mamba4Cast).
+Dual Protocol (Area Chair approved):
+  N=1 → subprocess → eval_real_dataset.py (same as script 12)
+        Uses ORIGINAL data_provider, covers ALL M assets, original timeline.
+        Results cached as .yml files (universal comparison currency).
 
-Self-contained: does NOT use subprocess. All inference happens in-process
-with detailed per-chunk logging for debugging.
-=============================================================
+  N>1 → Inline Asset-dimension Chunking
+        K = ⌈M/N⌉ sequential chunks via RobustZeroShotDataset.
+        Produces SAME cardinality as N=1 for fair Apple-to-Apple comparison.
+============================================================
 """
 
-import os, sys, yaml, warnings, pickle, math, time, traceback
+import os, sys, yaml, warnings, pickle, math, time, traceback, subprocess
 import numpy as np, pandas as pd, torch
 from pathlib import Path
 
-# ── Path Setup ────────────────────────────────────────────────────────────────
-# SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__)) if '__file__' in globals() else os.getcwd()
-# PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..'))
-PROJECT_ROOT = '/content/SC-Mamba'
-CKPT_DIR = '/content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints'
+# ── Path Setup (Colab-adaptive) ──────────────────────────────────────────────
+# NOTE: User may override these for Colab environment
+SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__)) if '__file__' in globals() else os.getcwd()
+PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..'))
+colab_ckpt = '/content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints'
+CKPT_DIR = colab_ckpt if os.path.exists(colab_ckpt) else os.path.join(PROJECT_ROOT, 'checkpoints')
+
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
@@ -30,7 +33,7 @@ from scipy.stats import norm as scipy_norm
 from gluonts.dataset.repository.datasets import get_dataset
 from gluonts.time_feature.seasonality import get_seasonality
 from utilsforecast.losses import mase, mae, smape, rmse
-from core.eval_real_dataset import scale_data, nll_eval, crps_gaussian
+from core.eval_real_dataset import scale_data, nll_eval, crps_gaussian, REAL_DATASETS
 from core.models import SCMamba_Forecaster
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -41,17 +44,9 @@ CONTEXT_LEN = 256
 SCALER      = 'min_max'
 
 # All 17 Target datasets: {name: prediction_length}
-TARGET_DATASETS = {
-    "nn5_daily_without_missing": 56, "nn5_weekly": 8, "covid_deaths": 30,
-    "weather": 30, "hospital": 12, "fred_md": 12,
-    "car_parts_without_missing": 12, "traffic": 24,
-    "m3_monthly": 18, "ercot": 24, "m1_monthly": 18,
-    "m1_quarterly": 8, "cif_2016": 12, "exchange_rate": 30,
-    "m3_quarterly": 8, "tourism_monthly": 24, "tourism_quarterly": 8,
-}
+TARGET_DATASETS = dict(REAL_DATASETS)  # Import from eval_real_dataset.py
 
-
-# Format: (label, checkpoint_path, config_yaml_path_or_None)
+# Format: (label, checkpoint_path, config_yaml_path)
 MODEL_TO_TEST = [
     (
         'N=1 MASE',
@@ -69,12 +64,35 @@ MODEL_TO_TEST = [
         os.path.join(PROJECT_ROOT, 'core', 'config.v3_multi_exchange_rate.yaml'),
     ),
 ]
+
 REAL_VAL_DIR = os.path.join(PROJECT_ROOT, 'data', 'real_val_datasets')
 
+# Suffix stripping: must match eval_real_dataset.py::main_evaluator line 826
+_STRIP_SUFFIXES = ('_best_mase', '_best', '_Final')
+
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Ensure all dataset PKLs exist
+# Utilities
 # ─────────────────────────────────────────────────────────────────────────────
+def derive_model_name(ckpt_path):
+    """Derive cache directory name from checkpoint filename.
+    Must EXACTLY mirror eval_real_dataset.py::main_evaluator suffix stripping."""
+    name = os.path.basename(ckpt_path).replace('.pth', '')
+    for suffix in _STRIP_SUFFIXES:
+        if name.endswith(suffix):
+            return name[: -len(suffix)]
+    return name
+
+
+def resolve_n_assets(config_path):
+    """Read num_assets from config YAML. Returns 1 if missing or file not found."""
+    if config_path and os.path.exists(config_path):
+        with open(config_path) as f:
+            cfg = yaml.safe_load(f)
+        return cfg.get('num_assets', 1)
+    return 1
+
+
 def ensure_datasets():
     """Generate missing dataset PKLs from GluonTS."""
     os.makedirs(REAL_VAL_DIR, exist_ok=True)
@@ -82,71 +100,84 @@ def ensure_datasets():
                if not os.path.exists(os.path.join(REAL_VAL_DIR, f'{ds}_nopad_512.pkl'))]
     if missing:
         print(f"\n🔄 Generating {len(missing)} missing dataset(s) from GluonTS...")
-        import subprocess
-        subprocess.run([sys.executable, os.path.join(PROJECT_ROOT, 'data', 'scripts', 'store_real_datasets.py')])
-    return missing
+        subprocess.run([sys.executable,
+                        os.path.join(PROJECT_ROOT, 'data', 'scripts', 'store_real_datasets.py')])
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Robust Model Loading (same logic as script 13)
-# ─────────────────────────────────────────────────────────────────────────────
-def load_model(ckpt_path, config_yaml_path, device):
-    """Load model from checkpoint with config YAML for architecture resolution."""
-    if not os.path.exists(ckpt_path):
-        raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
+# ═══════════════════════════════════════════════════════════════════════════════
+# PATH A: N=1 Evaluation via subprocess → eval_real_dataset.py
+# ═══════════════════════════════════════════════════════════════════════════════
+def eval_uni_via_subprocess(ckpt_path, config_path, model_name):
+    """
+    Run eval_real_dataset.py as subprocess (same code path as script 12).
+    Uses the ORIGINAL data_provider → covers ALL M assets on original timeline.
+    This is the Gold Standard for Univariate evaluation.
+    """
+    eval_dir = os.path.join(PROJECT_ROOT, 'data', 'real_data_evals', model_name, 'multipoint')
 
-    ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
-    state_dict = ckpt.get('model_state_dict', ckpt)
-    ssm_config = ckpt.get('ssm_config', {})
+    # Check which datasets already have cached results
+    missing = [ds for ds in TARGET_DATASETS
+               if not os.path.exists(os.path.join(eval_dir, f'{ds}_512.yml'))]
 
-    # Infer num_encoder_layers from state_dict keys if missing
-    if 'num_encoder_layers' not in ssm_config:
-        layer_indices = sorted(set(
-            int(k.split('.')[2]) for k in state_dict.keys()
-            if 'mamba_encoder_layers.' in k
-        ))
-        ssm_config['num_encoder_layers'] = max(layer_indices) + 1 if layer_indices else 2
-
-    # Resolve N_assets from config YAML (priority) → checkpoint → default
-    n_assets = 1
-    sub_day = False
-    if config_yaml_path and os.path.exists(config_yaml_path):
-        with open(config_yaml_path) as f:
-            cfg = yaml.safe_load(f)
-        n_assets = cfg.get('num_assets', 1)
-        sub_day = cfg.get('sub_day', False)
+    if not missing:
+        print(f"    ✅ All {len(TARGET_DATASETS)} datasets cached. Skipping subprocess.")
     else:
-        # Fallback: infer from checkpoint name or embedded metadata
-        if 'uni' in os.path.basename(ckpt_path).lower():
-            n_assets = 1
+        print(f"    ▶️ {len(missing)}/{len(TARGET_DATASETS)} datasets need evaluation.")
+        print(f"    Running eval_real_dataset.py ...")
+
+        cmd = [
+            sys.executable,
+            os.path.join(PROJECT_ROOT, 'core', 'eval_real_dataset.py'),
+            '-c', ckpt_path,
+            '-o', model_name,
+        ]
+        if config_path and os.path.exists(config_path):
+            cmd.extend(['-cfg', config_path])
         else:
-            n_assets = ckpt.get('N_assets', ckpt.get('num_assets', 1))
+            print(f"    ⚠️ Config not found: {config_path}")
 
-    # Override ssm_config from YAML if available
-    if config_yaml_path and os.path.exists(config_yaml_path):
-        yaml_ssm = cfg.get('ssm_config', {})
-        for k, v in yaml_ssm.items():
-            ssm_config[k] = v
+        print(f"    CMD: {' '.join(cmd)}")
+        result = subprocess.run(
+            cmd,
+            env=dict(os.environ, MKL_NUM_THREADS="1"),
+            capture_output=False,  # Show ALL output for debugging
+        )
+        if result.returncode != 0:
+            print(f"    ⚠️ eval subprocess exited with code {result.returncode}.")
 
-    model = SCMamba_Forecaster(N_assets=n_assets, ssm_config=ssm_config).to(device)
-    model.load_state_dict(state_dict, strict=False)
-    model.eval()
+    # Read cached .yml results
+    results = {}
+    for ds in TARGET_DATASETS:
+        yml_path = os.path.join(eval_dir, f'{ds}_512.yml')
+        if not os.path.exists(yml_path):
+            results[ds] = {'mase': np.nan, 'mcrps': np.nan}
+            continue
+        try:
+            with open(yml_path) as f:
+                raw = yaml.safe_load(f)
+            if raw:
+                metrics = next(iter(raw.values()), {})
+                m_mase = float(metrics.get('mase', np.nan))
+                m_mcrps = metrics.get('mcrps')
+                if m_mcrps is None:
+                    m_mcrps = metrics.get('crps_scaled', np.nan)
+                results[ds] = {'mase': m_mase, 'mcrps': float(m_mcrps) if m_mcrps is not None else np.nan}
+            else:
+                results[ds] = {'mase': np.nan, 'mcrps': np.nan}
+        except Exception as e:
+            print(f"    ⚠️ Error parsing {yml_path}: {e}")
+            results[ds] = {'mase': np.nan, 'mcrps': np.nan}
+    return results
 
-    print(f"  ✅ Loaded: {os.path.basename(ckpt_path)}")
-    print(f"     N_assets={model.N_assets}, sub_day={sub_day}")
-    print(f"     mamba2={ssm_config.get('mamba2','?')}, d_state={ssm_config.get('d_state','?')}, "
-          f"layers={ssm_config.get('num_encoder_layers','?')}")
-    return model, sub_day
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# PATH B: N>1 Evaluation via Inline Asset-dimension Chunking
+# ═══════════════════════════════════════════════════════════════════════════════
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Inline RobustZeroShotDataset (from script 13, production-proven)
-# ─────────────────────────────────────────────────────────────────────────────
 class RobustZeroShotDataset(torch.utils.data.Dataset):
     """
     Handles sparse/asynchronous multivariate PKLs gracefully.
-    - Dense time-cropping (drop rows where ALL selected series are NaN).
-    - ffill/bfill for spectral soundness (FFT requires continuous signal).
+    Dense time-cropping + ffill/bfill for FFT spectral soundness.
     """
     def __init__(self, pkl_path, pred_len, context_len, split, col_indices, sub_day=False):
         self.pred_len = pred_len
@@ -171,14 +202,7 @@ class RobustZeroShotDataset(torch.utils.data.Dataset):
             )
 
         df_sub = df_piv.iloc[:, valid_idx]
-
-        # Dense Time-Cropping: drop rows where all selected series are NaN
-        orig_len = len(df_sub)
         df_sub = df_sub.dropna(how='all')
-        cropped_len = len(df_sub)
-        nan_count = df_sub.isna().sum().sum()
-        total_cells = df_sub.size
-
         df_sub = df_sub.ffill().bfill().fillna(0.0)
 
         # Build timestamp features
@@ -203,7 +227,6 @@ class RobustZeroShotDataset(torch.utils.data.Dataset):
         min_train_required = context_len + pred_len
 
         if T_total < min_train_required + pred_len:
-            # Dataset too short — zero windows
             self.n_windows = 0
             self._start = 0
             self._end = T_total
@@ -214,9 +237,7 @@ class RobustZeroShotDataset(torch.utils.data.Dataset):
 
         max_val_allowed = max(pred_len, T_total - n_test - min_train_required)
         n_val = min(max(pred_len, 30), max_val_allowed)
-
-        ideal_train_end = T_total - n_test - n_val
-        train_end = max(ideal_train_end, min_train_required)
+        train_end = max(T_total - n_test - n_val, min_train_required)
         if train_end > T_total:
             train_end = T_total
 
@@ -224,13 +245,11 @@ class RobustZeroShotDataset(torch.utils.data.Dataset):
             self._start, self._end = 0, train_end
             self.n_windows = max(0, train_end - context_len - pred_len + 1)
         elif split == 'val':
-            val_target_start = T_total - n_test - n_val
-            self._start = max(0, val_target_start - context_len)
+            self._start = max(0, T_total - n_test - n_val - context_len)
             self._end = T_total - n_test
             self.n_windows = max(0, n_val - pred_len + 1)
         else:  # test
-            test_target_start = T_total - n_test
-            self._start = max(0, test_target_start - context_len)
+            self._start = max(0, T_total - n_test - context_len)
             self._end = T_total
             self.n_windows = max(0, n_test - pred_len + 1)
 
@@ -277,40 +296,58 @@ class RobustZeroShotDataset(torch.utils.data.Dataset):
         }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Core: Chunked Evaluation (the heart of Asset-dimension Chunking)
-# ─────────────────────────────────────────────────────────────────────────────
 def get_total_assets(pkl_path):
-    """Count total number of unique series in a PKL file."""
+    """Count total unique series in a PKL file."""
     with open(pkl_path, 'rb') as f:
         df = pickle.load(f)
     return len(df.index.get_level_values('Series').unique())
 
 
-def evaluate_single_chunk(model, pkl_path, pred_len, context_len,
-                          col_indices, scaler, device, sub_day, chunk_label=""):
-    """
-    Run inference on ONE chunk of assets. Returns dict of metrics or None.
-    Works for both Uni (N=1) and Multi (N>1) models.
-    """
-    N = len(col_indices)
-    model_n = getattr(model, 'N_assets', 1)
+def load_model(ckpt_path, config_path, device):
+    """Load SC-Mamba model from checkpoint + config YAML."""
+    ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
+    state_dict = ckpt.get('model_state_dict', ckpt)
+    ssm_config = ckpt.get('ssm_config', {})
 
+    if 'num_encoder_layers' not in ssm_config:
+        layer_indices = sorted(set(
+            int(k.split('.')[2]) for k in state_dict.keys()
+            if 'mamba_encoder_layers.' in k
+        ))
+        ssm_config['num_encoder_layers'] = max(layer_indices) + 1 if layer_indices else 2
+
+    n_assets = resolve_n_assets(config_path)
+    sub_day = False
+    if config_path and os.path.exists(config_path):
+        with open(config_path) as f:
+            cfg = yaml.safe_load(f)
+        sub_day = cfg.get('sub_day', False)
+        yaml_ssm = cfg.get('ssm_config', {})
+        for k, v in yaml_ssm.items():
+            ssm_config[k] = v
+
+    model = SCMamba_Forecaster(N_assets=n_assets, ssm_config=ssm_config).to(device)
+    model.load_state_dict(state_dict, strict=False)
+    model.eval()
+    print(f"    ✅ Loaded: {os.path.basename(ckpt_path)}")
+    print(f"       N_assets={model.N_assets}, sub_day={sub_day}, "
+          f"mamba2={ssm_config.get('mamba2','?')}, d_state={ssm_config.get('d_state','?')}")
+    return model, sub_day
+
+
+def evaluate_chunk(model, pkl_path, pred_len, context_len,
+                   col_indices, scaler, device, sub_day, chunk_label=""):
+    """Run inference on ONE chunk of assets. Returns (train_dfs, pred_dfs) or None."""
+    N = len(col_indices)
     try:
-        test_ds = RobustZeroShotDataset(
-            pkl_path, pred_len=pred_len, context_len=context_len,
-            split='test', col_indices=col_indices, sub_day=sub_day,
-        )
-        train_ds = RobustZeroShotDataset(
-            pkl_path, pred_len=pred_len, context_len=context_len,
-            split='train', col_indices=col_indices, sub_day=sub_day,
-        )
+        test_ds = RobustZeroShotDataset(pkl_path, pred_len, context_len, 'test', col_indices, sub_day)
+        train_ds = RobustZeroShotDataset(pkl_path, pred_len, context_len, 'train', col_indices, sub_day)
     except Exception as e:
-        print(f"      ❌ {chunk_label} Loader error: {e}")
+        print(f"      ❌ {chunk_label} Loader: {e}")
         return None
 
     if len(test_ds) == 0:
-        print(f"      ⚠️ {chunk_label} 0 test windows after cropping. Skipping.")
+        print(f"      ⚠️ {chunk_label} 0 test windows. Skip.")
         return None
 
     batch_train_dfs, batch_pred_dfs = [], []
@@ -318,66 +355,41 @@ def evaluate_single_chunk(model, pkl_path, pred_len, context_len,
     with torch.no_grad():
         for win_idx in range(len(test_ds)):
             sample = test_ds[win_idx]
-            x = sample['x'].to(device)       # (ctx, N)
-            y = sample['y'].to(device)        # (pred, N)
+            x = sample['x'].to(device)
+            y = sample['y'].to(device)
             ts_x = sample['ts_x'].to(device)
             ts_y = sample['ts_y'].to(device)
             T_pred = y.shape[0]
 
-            if model_n == 1:
-                # Univariate: loop each asset independently
-                mu_list, sig_list = [], []
-                for ai in range(N):
-                    data = {
-                        'history': x[:, ai:ai+1].permute(1, 0),
-                        'ts': ts_x.unsqueeze(0),
-                        'target_dates': ts_y.unsqueeze(0),
-                        'task': torch.zeros(1, T_pred, dtype=torch.int32, device=device),
-                    }
-                    out = model(data, prediction_length=T_pred)
-                    a_mu, a_sig = scale_data(out, scaler)
-                    mu_list.append(a_mu)
-                    sig_list.append(a_sig)
-                scaled_mu = torch.cat(mu_list, dim=0)
-                scaled_sigma2 = torch.cat(sig_list, dim=0)
-            else:
-                # Multivariate: forward all N assets at once
-                data = {
-                    'history': x.permute(1, 0),           # (N, ctx)
-                    'ts': ts_x.unsqueeze(0).expand(N, -1, -1),
-                    'target_dates': ts_y.unsqueeze(0).expand(N, -1, -1),
-                    'task': torch.zeros(N, T_pred, dtype=torch.int32, device=device),
-                }
-                output = model(data, prediction_length=T_pred)
-                scaled_mu, scaled_sigma2 = scale_data(output, scaler)
+            data = {
+                'history': x.permute(1, 0),
+                'ts': ts_x.unsqueeze(0).expand(N, -1, -1),
+                'target_dates': ts_y.unsqueeze(0).expand(N, -1, -1),
+                'task': torch.zeros(N, T_pred, dtype=torch.int32, device=device),
+            }
+            output = model(data, prediction_length=T_pred)
+            scaled_mu, scaled_sigma2 = scale_data(output, scaler)
 
-            mu_np = scaled_mu.cpu().numpy()      # (N, T_pred)
-            sig_np = scaled_sigma2.cpu().numpy()  # (N, T_pred)
-            y_np = y.cpu().numpy()                # (T_pred, N)
+            mu_np = scaled_mu.cpu().numpy()
+            sig_np = scaled_sigma2.cpu().numpy()
+            y_np = y.cpu().numpy()
 
             for ai in range(N):
                 aid = f"asset_{col_indices[ai]}"
-
                 train_hist = train_ds.values[:, ai]
                 batch_train_dfs.append(pd.DataFrame({
                     'id': [aid] * len(train_hist), 'target': train_hist,
                 }))
-
                 sigma_i = np.sqrt(np.clip(sig_np[ai], 1e-6, None))
                 crps_vals = crps_gaussian(mu_np[ai], sigma_i, y_np[:, ai])
                 nll_vals = nll_eval(
-                    torch.tensor(mu_np[ai]),
-                    torch.tensor(sig_np[ai]),
-                    torch.tensor(y_np[:, ai]),
+                    torch.tensor(mu_np[ai]), torch.tensor(sig_np[ai]),
+                    torch.tensor(y_np[:, ai])
                 ).numpy()
-
                 batch_pred_dfs.append(pd.DataFrame({
-                    'id': [aid] * T_pred,
-                    'pred': mu_np[ai],
-                    'target': y_np[:, ai],
-                    'variance': sig_np[ai],
-                    'nll': nll_vals,
-                    'crps': crps_vals,
+                    'id': [aid] * T_pred, 'pred': mu_np[ai],
+                    'target': y_np[:, ai], 'variance': sig_np[ai],
+                    'nll': nll_vals, 'crps': crps_vals,
                 }))
 
     return batch_train_dfs, batch_pred_dfs
@@ -399,7 +411,6 @@ def compute_metrics(batch_train_dfs, batch_pred_dfs, ds_name):
     except Exception:
         seasonality = 1
 
-    # MASE (robust against inf from zero-variance training windows)
     try:
         mase_res = mase(pred_df, ['pred'], seasonality, train_df, 'id', 'target')
         mase_series = mase_res['pred'].replace([np.inf, -np.inf], np.nan)
@@ -410,7 +421,6 @@ def compute_metrics(batch_train_dfs, batch_pred_dfs, ds_name):
         print(f"      [MASE Error] {e}")
         mase_mean = float('nan')
 
-    # mCRPS (Mean-Scaled CRPS)
     raw_crps = float(pred_df['crps'].replace([np.inf, -np.inf], np.nan).mean(skipna=True))
     mean_abs_target = float(train_df['target'].abs().mean(skipna=True))
     if mean_abs_target < 1e-8:
@@ -420,39 +430,13 @@ def compute_metrics(batch_train_dfs, batch_pred_dfs, ds_name):
     return {'mase': mase_mean, 'mcrps': mcrps}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Main Evaluation Loop
-# ─────────────────────────────────────────────────────────────────────────────
-# Evaluation strategy constants
-# ─────────────────────────────────────────────────────────────────────────────
-# For N=1 models: random-subset sampling, same protocol as script 13.
-# Using 8 random assets × 5 fixed seeds → averaged result.
-# This is statistically valid, fast (no timeout), and avoids async-series issues.
-UNI_SAMPLE_N = 8        # How many assets to sample per seed for N=1 eval
-EVAL_SEEDS   = [7270, 860, 5390, 5191, 5734]  # Fixed seeds (same as script 13)
-
-
-def evaluate_model_on_dataset(model, ds_name, pred_len, device, sub_day):
+def eval_chunked_dataset(model, ds_name, pred_len, device, sub_day):
     """
-    Evaluate a model on a single dataset.
-
-    Dual strategy:
-    ─ N=1 (Univariate): Random-subset sampling.
-        Pick UNI_SAMPLE_N=8 assets per seed × EVAL_SEEDS (5 seeds).
-        Each seed is evaluated with evaluate_single_chunk (N=1 → Uni inner loop).
-        Average MASE/mCRPS across seeds.
-        ✓ Fast (no PKL reload storm).
-        ✓ Handles asynchronous datasets (only 1 or few assets → no alignment issue).
-        ✓ Same protocol as script 13, reviewers accept it.
-
-    ─ N>1 (Multivariate): Full Asset-dimension Chunking.
-        Split all M assets into K=ceil(M/N) chunks, circular-pad last chunk.
-        Evaluate ALL M assets → Full-dataset metrics.
-        This is the novel contribution allowing fair comparison with Uni baselines.
+    Asset-dimension Chunking: evaluate ALL M assets via K=⌈M/N⌉ chunks.
+    Only for N>1 models.
     """
-    model_n = getattr(model, 'N_assets', 1)
+    N = getattr(model, 'N_assets', 1)
     pkl_path = os.path.join(REAL_VAL_DIR, f'{ds_name}_nopad_512.pkl')
-
     if not os.path.exists(pkl_path):
         print(f"    ⏭️ PKL missing: {pkl_path}")
         return None
@@ -460,100 +444,56 @@ def evaluate_model_on_dataset(model, ds_name, pred_len, device, sub_day):
     try:
         total_M = get_total_assets(pkl_path)
     except Exception as e:
-        print(f"    ⏭️ PKL metadata error: {e}")
+        print(f"    ⏭️ PKL error: {e}")
         return None
 
-    print(f"    📊 {ds_name}: {total_M} assets, model_N={model_n}, pred_len={pred_len}")
+    K = math.ceil(total_M / N)
+    print(f"    📊 {ds_name}: {total_M} assets → {K} chunks of {N}, pred_len={pred_len}")
 
-    if model_n == 1:
-        # ── N=1: Random-subset sampling (same as script 13) ─────────────────
-        # Do NOT group multiple assets — each seed gets its own col_indices slice
-        # passed as a group so the inner loop treats them as independent assets.
-        seed_metrics = []
+    all_train_dfs, all_pred_dfs = [], []
+    n_ok = 0
 
-        for seed in EVAL_SEEDS:
-            rng = np.random.default_rng(seed)
-            sample_n = min(UNI_SAMPLE_N, total_M)  # safety for tiny datasets
-            col_indices = sorted(rng.choice(total_M, size=sample_n, replace=False).tolist())
+    for k in range(K):
+        start = k * N
+        end = min((k + 1) * N, total_M)
+        valid_len = end - start
 
-            result = evaluate_single_chunk(
-                model, pkl_path, pred_len, CONTEXT_LEN,
-                col_indices, SCALER, device, sub_day,
-                chunk_label=f"[Seed {seed}]",
-            )
-            if result is not None:
-                m = compute_metrics(result[0], result[1], ds_name)
-                if pd.notna(m['mase']) and pd.notna(m['mcrps']):
-                    seed_metrics.append(m)
-                    print(f"      Seed {seed}: MASE={m['mase']:.4f}, mCRPS={m['mcrps']:.4f}")
-                else:
-                    print(f"      Seed {seed}: metric NaN, skipped")
-            else:
-                print(f"      Seed {seed}: no valid windows, skipped")
+        col_indices = list(range(start, end))
+        if valid_len < N:
+            # Circular-pad last chunk
+            col_indices += [col_indices[i % valid_len] for i in range(N - valid_len)]
+            print(f"      Chunk {k+1}/{K}: assets [{start}..{end-1}] + {N - valid_len} pad")
+        elif k % max(1, K // 5) == 0 or k == K - 1:
+            print(f"      Chunk {k+1}/{K}: assets [{start}..{end-1}]")
 
-        if not seed_metrics:
-            print(f"    ❌ No valid seed results for {ds_name}")
-            return None
+        result = evaluate_chunk(
+            model, pkl_path, pred_len, CONTEXT_LEN,
+            col_indices, SCALER, device, sub_day,
+            chunk_label=f"[Chunk {k+1}/{K}]",
+        )
+        if result is not None:
+            all_train_dfs.extend(result[0])
+            all_pred_dfs.extend(result[1])
+            n_ok += 1
 
-        metrics = {
-            'mase':  float(np.nanmean([m['mase']  for m in seed_metrics])),
-            'mcrps': float(np.nanmean([m['mcrps'] for m in seed_metrics])),
-        }
-        print(f"    ✅ {ds_name}: MASE={metrics['mase']:.4f}, mCRPS={metrics['mcrps']:.4f} "
-              f"(avg {len(seed_metrics)}/{len(EVAL_SEEDS)} seeds, sample_n={sample_n})")
-        return metrics
+    if not all_pred_dfs:
+        print(f"    ❌ No valid predictions for {ds_name}")
+        return None
 
-    else:
-        # ── N>1: Asset-dimension Chunking — evaluate FULL dataset ──────────
-        N = model_n
-        K = math.ceil(total_M / N)
-        print(f"    🔀 Chunked eval: {total_M} assets → {K} chunks of {N}")
-
-        all_train_dfs, all_pred_dfs = [], []
-        n_chunks_ok = 0
-
-        for k in range(K):
-            start = k * N
-            end = min((k + 1) * N, total_M)
-            valid_len = end - start
-
-            # Circular-pad last chunk if needed
-            col_indices = list(range(start, end))
-            if valid_len < N:
-                pad_needed = N - valid_len
-                col_indices += [col_indices[i % valid_len] for i in range(pad_needed)]
-                if k == K - 1:  # only print pad info for last chunk
-                    print(f"      Last chunk {k+1}/{K}: assets [{start}..{end-1}] + {pad_needed} pad")
-            elif k % 10 == 0 or k == K - 1:
-                # Print every 10th chunk to avoid log spam
-                print(f"      Chunk {k+1}/{K}: assets [{start}..{end-1}]")
-
-            result = evaluate_single_chunk(
-                model, pkl_path, pred_len, CONTEXT_LEN,
-                col_indices, SCALER, device, sub_day,
-                chunk_label=f"[Chunk {k+1}/{K}]",
-            )
-
-            if result is not None:
-                train_dfs, pred_dfs = result
-                all_train_dfs.extend(train_dfs)
-                all_pred_dfs.extend(pred_dfs)
-                n_chunks_ok += 1
-
-        if not all_pred_dfs:
-            print(f"    ❌ No valid predictions for {ds_name}")
-            return None
-
-        metrics = compute_metrics(all_train_dfs, all_pred_dfs, ds_name)
-        print(f"    ✅ {ds_name}: MASE={metrics['mase']:.4f}, mCRPS={metrics['mcrps']:.4f} "
-              f"({n_chunks_ok}/{K} chunks successful, {len(all_pred_dfs)} pred-blocks)")
-        return metrics
+    metrics = compute_metrics(all_train_dfs, all_pred_dfs, ds_name)
+    print(f"    ✅ {ds_name}: MASE={metrics['mase']:.4f}, mCRPS={metrics['mcrps']:.4f} "
+          f"({n_ok}/{K} chunks OK)")
+    return metrics
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Main orchestrator
+# ═══════════════════════════════════════════════════════════════════════════════
 def main():
     print(f"\n{'='*110}")
-    print(f"🚀 SC-Mamba Universal Zero-Shot Benchmark (17 Datasets)")
-    print(f"   Asset-dimension Chunking for N>1 models")
+    print(f"🚀 SC-Mamba Gold-Standard Zero-Shot Benchmark (17 Datasets)")
+    print(f"   N=1: Full-dataset via eval_real_dataset.py (same as SOTA baselines)")
+    print(f"   N>1: Asset-dimension Chunking (⌈M/N⌉ chunks)")
     print(f"   Device: {DEVICE}")
     print(f"{'='*110}\n")
 
@@ -567,58 +507,78 @@ def main():
         print(f"▶️  {label}")
         print(f"   Checkpoint: {ckpt_path}")
         print(f"   Config:     {config_path}")
-        print(f"{'─'*80}")
 
         if not os.path.exists(ckpt_path):
             print(f"   ❌ Checkpoint not found! Skipping.")
             continue
 
-        try:
-            model, sub_day = load_model(ckpt_path, config_path, DEVICE)
-        except Exception as e:
-            print(f"   ❌ Load failed: {e}")
-            traceback.print_exc()
-            continue
+        n_assets = resolve_n_assets(config_path)
+        model_name = derive_model_name(ckpt_path)
+        print(f"   N_assets:   {n_assets}")
+        print(f"   Cache key:  {model_name}")
+        print(f"{'─'*80}")
 
         model_labels.append(label)
-        model_n = getattr(model, 'N_assets', 1)
 
-        for ds_name, pred_len in TARGET_DATASETS.items():
-            t0 = time.time()
-            try:
-                metrics = evaluate_model_on_dataset(model, ds_name, pred_len, DEVICE, sub_day)
-            except Exception as e:
-                print(f"    ❌ {ds_name} EXCEPTION: {e}")
-                traceback.print_exc()
-                metrics = None
-
-            elapsed = time.time() - t0
-
-            if metrics:
+        if n_assets == 1:
+            # ── PATH A: N=1 → subprocess (Gold Standard Univariate) ──────
+            print(f"  🔬 [PATH A] Univariate Full-Dataset eval via subprocess...")
+            ds_results = eval_uni_via_subprocess(ckpt_path, config_path, model_name)
+            for ds, metrics in ds_results.items():
                 all_results.append({
-                    'Model': label, 'Dataset': ds_name,
+                    'Model': label, 'Dataset': ds,
                     'MASE': metrics['mase'], 'mCRPS': metrics['mcrps'],
                 })
-                print(f"    ⏱️  {elapsed:.1f}s")
-            else:
-                all_results.append({
-                    'Model': label, 'Dataset': ds_name,
-                    'MASE': np.nan, 'mCRPS': np.nan,
-                })
-                print(f"    ⏱️  {elapsed:.1f}s (FAILED)")
+        else:
+            # ── PATH B: N>1 → inline chunked eval ────────────────────────
+            print(f"  🔬 [PATH B] Multivariate Asset-dimension Chunking (N={n_assets})...")
+            try:
+                model, sub_day = load_model(ckpt_path, config_path, DEVICE)
+            except Exception as e:
+                print(f"   ❌ Load failed: {e}")
+                traceback.print_exc()
+                for ds in TARGET_DATASETS:
+                    all_results.append({
+                        'Model': label, 'Dataset': ds,
+                        'MASE': np.nan, 'mCRPS': np.nan,
+                    })
+                continue
 
-        # Free GPU memory between models
-        del model
-        torch.cuda.empty_cache() if torch.cuda.is_available() else None
+            for ds_name, pred_len in TARGET_DATASETS.items():
+                t0 = time.time()
+                try:
+                    metrics = eval_chunked_dataset(model, ds_name, pred_len, DEVICE, sub_day)
+                except Exception as e:
+                    print(f"    ❌ {ds_name} EXCEPTION: {e}")
+                    traceback.print_exc()
+                    metrics = None
+
+                elapsed = time.time() - t0
+                if metrics:
+                    all_results.append({
+                        'Model': label, 'Dataset': ds_name,
+                        'MASE': metrics['mase'], 'mCRPS': metrics['mcrps'],
+                    })
+                    print(f"    ⏱️  {elapsed:.1f}s")
+                else:
+                    all_results.append({
+                        'Model': label, 'Dataset': ds_name,
+                        'MASE': np.nan, 'mCRPS': np.nan,
+                    })
+                    print(f"    ⏱️  {elapsed:.1f}s (FAILED)")
+
+            del model
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
     if not all_results:
-        print("\n❌ No results. Check checkpoints and dataset paths.")
+        print("\n❌ No results. Check checkpoints.")
         return
 
     # ── Build Comparison Table ────────────────────────────────────────────
     df = pd.DataFrame(all_results)
     n_models = len(model_labels)
-    col_w = 22
+    col_w = 20
     ds_w = 30
     sep_w = ds_w + 3 + (col_w + 3) * n_models * 2
 
@@ -626,12 +586,10 @@ def main():
     print(f"📊 FULL BENCHMARK RESULTS")
     print(f"{'='*sep_w}")
 
-    # Header row 1
     mase_hdr = "MASE".center((col_w + 3) * n_models - 3)
     mcrps_hdr = "mCRPS".center((col_w + 3) * n_models - 3)
     print(f"{'Dataset':<{ds_w}} | {mase_hdr} | {mcrps_hdr}")
 
-    # Header row 2 (model names)
     model_cols = " | ".join(f"{m[:col_w]:<{col_w}}" for m in model_labels)
     print(f"{'':<{ds_w}} | {model_cols} | {model_cols}")
     print(f"{'─'*sep_w}")
@@ -653,7 +611,6 @@ def main():
 
     print(f"{'─'*sep_w}")
 
-    # Global summary
     summary = df.groupby('Model')[['MASE', 'mCRPS']].agg(
         lambda x: np.nanmean(x) if x.notna().any() else np.nan
     ).rename(columns={'MASE': 'Avg MASE', 'mCRPS': 'Avg mCRPS'})
@@ -662,7 +619,7 @@ def main():
     print(f"\n📊 GLOBAL SUMMARY (Mean across {len(TARGET_DATASETS)} datasets):\n")
     print(summary.to_string(float_format='%.4f', na_rep='—'))
     print(f"\n{'='*sep_w}")
-    print(f"✅ Benchmark 14 complete.\n")
+    print(f"✅ Gold-Standard Benchmark complete.\n")
 
 
 # if __name__ == '__main__':
