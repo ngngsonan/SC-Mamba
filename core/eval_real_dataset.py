@@ -442,17 +442,32 @@ def multivariate_predict_chunked(
     sub_day: bool = False,
     context_len: int = None,
 ) -> tuple:
+    """
+    Asset-dimension Chunking: evaluate a multivariate model (N_assets > 1)
+    on ANY dataset regardless of its number of series M.
+
+    Algorithm:
+      1. Probe the dataset to find actual_M (after sparse-drop).
+      2. Split M assets into K = ceil(M/N) chunks of size N.
+      3. Last chunk gets circular-padded if M % N != 0.
+      4. Forward pass each chunk, discard padded predictions.
+      5. Concatenate all M real predictions for metric computation.
+
+    Bug-fix notes:
+      - col_indices is passed WITHOUT N_assets to avoid loader conflict.
+      - Shape assertion after loading guarantees tensor matches model expectation.
+    """
     import math
     import warnings
     from data.data_provider.multivariate_loader import MultivariateRealDataset
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
     data_dir  = os.path.join(base_dir, '..', 'data', 'real_val_datasets')
-    
+
     config_file = os.path.join(base_dir, 'real_data_args.yaml')
     with open(config_file) as file:
         real_data_args = yaml.load(file, yaml.loader.SafeLoader)
-    
+
     if real_data_args.get('pad', False):
         pkl_path = os.path.join(data_dir, f'{dataset}_pad_{MAX_LENGTH}.pkl')
     else:
@@ -462,56 +477,78 @@ def multivariate_predict_chunked(
     if context_len is None:
         context_len = MAX_LENGTH
 
+    # ── Step 1: Probe dataset to find actual_M (post sparse-drop) ──────────
     try:
         probe_ds = MultivariateRealDataset(
             pkl_path, pred_len=pred_len, context_len=context_len,
             split='test', N_assets=None, sub_day=sub_day
         )
         actual_M = probe_ds.N_assets
-    except ValueError as e:
-        print(f"⚠️ [Chunked Eval] Probe failed: {e}")
+    except (ValueError, FileNotFoundError) as e:
+        print(f"  ⚠️ [Chunked Eval] Probe failed for {dataset}: {e}")
         return [], []
+
+    del probe_ds  # Free memory
 
     batch_train_dfs = []
     batch_pred_dfs  = []
     model.eval()
 
     K = math.ceil(actual_M / N)
-    print(f"  [eval] Chunked Multivariate Eval ON: Dataset={actual_M} assets → {K} chunks of size {N}.")
+    print(f"  [eval] Chunked Multivariate: {dataset} has {actual_M} assets → {K} chunks of {N}.")
 
-    warnings.filterwarnings("ignore", category=RuntimeWarning, module="data.data_provider.multivariate_loader")
+    warnings.filterwarnings(
+        "ignore", category=RuntimeWarning,
+        module="data.data_provider.multivariate_loader"
+    )
 
     with torch.no_grad():
         for k in range(K):
             start_idx = k * N
-            end_idx = min((k+1) * N, actual_M)
+            end_idx   = min((k + 1) * N, actual_M)
             valid_len = end_idx - start_idx
-            
+
+            # Build col_indices for this chunk (circular-pad if last chunk is short)
             col_indices = list(range(start_idx, end_idx))
-            
             if valid_len < N:
                 pad_needed = N - valid_len
                 col_indices += [col_indices[i % valid_len] for i in range(pad_needed)]
 
-            test_ds = MultivariateRealDataset(
-                pkl_path, pred_len=pred_len, context_len=context_len,
-                split='test', N_assets=N, sub_day=sub_day, col_indices=col_indices
-            )
-            train_ds = MultivariateRealDataset(
-                pkl_path, pred_len=pred_len, context_len=context_len,
-                split='train', N_assets=N, sub_day=sub_day, col_indices=col_indices
-            )
+            # FIX Bug #1: Pass col_indices ONLY, let loader determine shape.
+            # Then assert the result matches N exactly.
+            try:
+                test_ds = MultivariateRealDataset(
+                    pkl_path, pred_len=pred_len, context_len=context_len,
+                    split='test', N_assets=None, sub_day=sub_day,
+                    col_indices=col_indices,
+                )
+                train_ds = MultivariateRealDataset(
+                    pkl_path, pred_len=pred_len, context_len=context_len,
+                    split='train', N_assets=None, sub_day=sub_day,
+                    col_indices=col_indices,
+                )
+            except (ValueError, FileNotFoundError) as e:
+                print(f"  ⚠️ [Chunked Eval] Chunk {k} load failed: {e}")
+                continue
+
+            # Shape assertion: loader must have exactly N columns after col_indices selection.
+            if test_ds.N_assets != N:
+                print(
+                    f"  ⚠️ [Chunked Eval] Chunk {k}: expected {N} columns, "
+                    f"got {test_ds.N_assets}. Skipping chunk."
+                )
+                continue
 
             for win_idx in range(len(test_ds)):
                 sample = test_ds[win_idx]
-                x    = sample['x'].to(device)    
-                y    = sample['y'].to(device)    
-                ts_x = sample['ts_x'].to(device) 
-                ts_y = sample['ts_y'].to(device) 
+                x    = sample['x'].to(device)     # (ctx, N)
+                y    = sample['y'].to(device)      # (pred, N)
+                ts_x = sample['ts_x'].to(device)   # (ctx, ts_dim)
+                ts_y = sample['ts_y'].to(device)   # (pred, ts_dim)
 
-                T_ctx  = x.shape[0]
                 T_pred = y.shape[0]
 
+                # Reshape for backbone: (N, ctx), (N, ctx, ts_dim), (N, pred, ts_dim)
                 history  = x.permute(1, 0)
                 ts_x_rep = ts_x.unsqueeze(0).expand(N, -1, -1)
                 ts_y_rep = ts_y.unsqueeze(0).expand(N, -1, -1)
@@ -526,14 +563,16 @@ def multivariate_predict_chunked(
                 output = model(data, prediction_length=T_pred)
                 scaled_mu, scaled_sigma2 = scale_data(output, scaler)
 
-                mu_np    = scaled_mu.detach().cpu().numpy()       
-                sig_np   = scaled_sigma2.detach().cpu().numpy()   
-                y_np     = y.cpu().numpy()                        
+                mu_np  = scaled_mu.detach().cpu().numpy()       # (N, T_pred)
+                sig_np = scaled_sigma2.detach().cpu().numpy()   # (N, T_pred)
+                y_np   = y.cpu().numpy()                        # (T_pred, N)
 
+                # Only collect REAL assets (discard circular-padded duplicates)
                 for asset_in_chunk in range(valid_len):
                     asset_i_global = start_idx + asset_in_chunk
                     asset_id = f"{dataset}_asset_{asset_i_global}"
-                    
+
+                    # MASE denominator: use training context for this asset
                     if len(train_ds) > 0:
                         train_sample = train_ds[len(train_ds) - 1]
                         train_hist_i = train_sample['x'][:, asset_in_chunk].numpy()
@@ -559,7 +598,11 @@ def multivariate_predict_chunked(
                         'nll':      nll_vals,
                     }))
 
-    warnings.filterwarnings("default", category=RuntimeWarning, module="data.data_provider.multivariate_loader")
+    warnings.filterwarnings(
+        "default", category=RuntimeWarning,
+        module="data.data_provider.multivariate_loader"
+    )
+    print(f"  [eval] Chunked result: {len(batch_pred_dfs)} asset-prediction blocks collected.")
     return batch_train_dfs, batch_pred_dfs
 
 
@@ -779,8 +822,8 @@ def main_evaluator(pred_style=None, checkpoint_path=None, config_yaml_path=None,
     else:
         # Derive model name from filename for result directory naming
         model_name = os.path.basename(checkpoint_path).replace('.pth', '')
-        # Strip _best / _Final suffixes for cleaner directory names
-        for suffix in ('_best', '_Final'):
+        # Strip suffixes for cleaner directory names (order matters: longest first)
+        for suffix in ('_best_mase', '_best', '_Final'):
             if model_name.endswith(suffix):
                 model_name = model_name[:-len(suffix)]
                 break
