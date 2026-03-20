@@ -5,8 +5,6 @@ sin_pos_enc: false
 sin_pos_const: false
 encoding_dropout: 0.1
 handle_constants_model: true
-num_assets: 1
-sub_day: true
 ssm_config:
   bidirectional: false
   enc_conv: true
@@ -28,64 +26,38 @@ ssm_config:
   block_expansion: 2
   chunk_size: 256
   headdim: 128
-num_epochs: 100
-training_rounds: 200
+num_epochs: 30
 validation_rounds: 50
 real_test_interval: 5
 lr_scheduler: cosine
 initial_lr: 5.0e-05
-learning_rate: 1.0e-07
+learning_rate: 1.0e-05
 t_max: -1
 context_len: 256
-min_seq_len: 30
+min_seq_len: 60
 max_seq_len: 256
-pred_len: 60
+pred_len_sample: false
 pred_len_min: 10
-pred_len_sample: true
-batch_size: 64
-no_pos_enc: false
 loss: nll
-beta_kl: 0.1
 multipoint: true
-sample_multi_pred: 0.5
+sample_multi_pred: 0.3
 diag_prints: true
 nll_detach: true
+spectral_config:
+  tau_init: 1.0
+  alpha_init: 10.0
 model_prefix: /content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints
 wandb: false
 continue_training: false
-version: v3_17data_N_uni
-real_train_datasets:
-- car_parts_without_missing
-- cif_2016
-- covid_deaths
-- ercot
-- exchange_rate
-- fred_md
-- hospital
-- m1_monthly
-- m1_quarterly
-- m3_monthly
-- m3_quarterly
-- nn5_daily_without_missing
-- nn5_weekly
-- tourism_monthly
-- tourism_quarterly
-- traffic
-- weather
-real_test_datasets:
-- exchange_rate
-- fred_md
-- m1_monthly
 prior_config:
-  prior_mix_frac: 1
   curriculum_learning: false
   mixup_prob: 0.0
   mixup_series: 4
-  damp_and_spike: true
-  damping_noise_ratio: 0.05
-  spike_noise_ratio: 0.05
-  spike_signal_ratio: 0.05
-  spike_batch_ratio: 0.05
+  damp_and_spike: false
+  damping_noise_ratio: 0.0
+  spike_noise_ratio: 0.0
+  spike_signal_ratio: 0.0
+  spike_batch_ratio: 0.0
   fp_options:
     linear_random_walk_frac: 0
     seasonal_only: false
@@ -123,3 +95,17 @@ prior_config:
       periodic_kernel: 5
       polynomial_kernel: 0
       spectral_mixture_kernel: 0
+  prior_mix_frac: 1
+num_assets: 8
+sub_day: false
+pred_len: 20
+batch_size: 8
+beta_kl: 0.2
+beta_anneal_epochs: 10
+gamma_sparsity: 0.1
+training_rounds: 200
+version: v3_multi_exchange_rate
+real_train_datasets:
+- exchange_rate
+real_test_datasets:
+- exchange_rate

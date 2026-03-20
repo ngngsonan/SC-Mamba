@@ -191,7 +191,6 @@ class SpectralVariationalLayer(nn.Module):
         # Learnable causal cut-off threshold τ — initialized at tau_init.
         self.tau = nn.Parameter(torch.tensor(tau_init))
 
-        # Previous α=1.0 caused sigmoid floor of 0.119, making sparsity always 0%.
         # Clamped in forward() to [0.5, 50] to prevent degenerate solutions.
         self.log_alpha = nn.Parameter(torch.tensor(log_alpha_init))
         
