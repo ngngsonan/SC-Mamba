@@ -31,7 +31,6 @@ import sys
 import time
 import logging
 import traceback
-import argparse
 from datetime import datetime
 
 import torch
@@ -431,56 +430,48 @@ def generate_latex_table(df: pd.DataFrame, label: str) -> str:
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# Main
+# Main Batch Runner
 # ═════════════════════════════════════════════════════════════════════════════
 
 def main():
-    parser = argparse.ArgumentParser(
-        description=(
-            'SC-Mamba Unified Benchmark: evaluate checkpoint on all 17 GluonTS datasets.\n'
-            'Auto-routes N=1→per-series, N>1→Asset-dimension Chunking.'
+    # ── Path configuration ──────────────────────────────────────────────────
+    colab_ckpt = '/content/drive/MyDrive/Colab Notebooks/SCMamba/sc_mamba_checkpoints'
+    ckpt_dir = colab_ckpt if os.path.exists(colab_ckpt) else os.path.join(_PROJECT_ROOT, 'checkpoints')
+    core_dir = os.path.join(_PROJECT_ROOT, 'core')
+
+    # ── Evaluation Configurations ───────────────────────────────────────────
+    # Format: (output_label, checkpoint_path, config_yaml_path)
+    MODELS_TO_TEST = [
+        (
+            'SC-Mamba_N1',
+            os.path.join(ckpt_dir, 'SCMamba_v2_17data_N_uni_best_mase.pth'),
+            os.path.join(core_dir, 'config.based_setup.yaml'),
         ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    parser.add_argument(
-        '-c', '--checkpoint', type=str, required=True,
-        help='Path to checkpoint .pth file',
-    )
-    parser.add_argument(
-        '-cfg', '--config', type=str, default=None,
-        help='Path to training config YAML (for ssm_config, num_assets, scaler)',
-    )
-    parser.add_argument(
-        '-o', '--out_name', type=str, default=None,
-        help='Model label for output files (default: auto from checkpoint filename)',
-    )
-    parser.add_argument(
-        '--ctx_len', type=int, default=512,
-        help='Context length for evaluation (default: 512)',
-    )
-    parser.add_argument(
-        '--datasets', type=str, nargs='*', default=None,
-        help='Subset of datasets to evaluate (default: all 17). Example: --datasets traffic weather',
-    )
-    parser.add_argument(
-        '--debug', action='store_true',
-        help='Enable debug mode with detailed logs',
-    )
-    args = parser.parse_args()
+        (
+            'SC-Mamba_N8_Chunked',
+            os.path.join(ckpt_dir, 'SCMamba_v3_multi_exchange_rate_best.pth'),
+            os.path.join(core_dir, 'config.v3_multi_exchange_rate.yaml'),
+        ),
+        # Add more configurations here...
+    ]
+
+    CONTEXT_LEN = 512
+    DEBUG_MODE = True
+    DATASETS_TO_RUN = None  # None executes all 17 datasets. Or provide list: ['exchange_rate', 'traffic']
 
     # ── Output directory ────────────────────────────────────────────────────
     out_dir = os.path.join(_PROJECT_ROOT, 'results')
     os.makedirs(out_dir, exist_ok=True)
 
     # ── Logger ──────────────────────────────────────────────────────────────
-    logger = setup_logger(args.debug, out_dir)
+    logger = setup_logger(DEBUG_MODE, out_dir)
 
-    logger.info(f"\n{'═'*70}")
-    logger.info(f"  SC-Mamba Unified Benchmark")
+    logger.info(f"\n{'═'*80}")
+    logger.info(f"  SC-Mamba Unified Batch Benchmark")
     logger.info(f"  {'Time':.<20s} {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    logger.info(f"  {'Debug':.<20s} {args.debug}")
-    logger.info(f"  {'Context len':.<20s} {args.ctx_len}")
-    logger.info(f"{'═'*70}")
+    logger.info(f"  {'Debug':.<20s} {DEBUG_MODE}")
+    logger.info(f"  {'Context len':.<20s} {CONTEXT_LEN}")
+    logger.info(f"{'═'*80}")
 
     # ── Device ──────────────────────────────────────────────────────────────
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -489,76 +480,78 @@ def main():
         logger.info(f"  GPU: {torch.cuda.get_device_name(0)}")
         logger.info(f"  VRAM: {torch.cuda.get_device_properties(0).total_mem / 1e9:.1f} GB")
 
-    # ── Load model ──────────────────────────────────────────────────────────
-    model, scaler, sub_day, n_assets = load_checkpoint(
-        args.checkpoint, args.config, device, logger,
-    )
-
-    # ── Model label ─────────────────────────────────────────────────────────
-    if args.out_name:
-        label = args.out_name
-    else:
-        base = os.path.basename(args.checkpoint).replace('.pth', '')
-        for suffix in ('_best_mase', '_best', '_Final'):
-            if base.endswith(suffix):
-                base = base[:-len(suffix)]
-                break
-        label = f"{base}_N{n_assets}"
-
     # ── Dataset filter ──────────────────────────────────────────────────────
-    if args.datasets:
-        datasets = {k: v for k, v in REAL_DATASETS.items() if k in args.datasets}
+    if DATASETS_TO_RUN:
+        datasets = {k: v for k, v in REAL_DATASETS.items() if k in DATASETS_TO_RUN}
         if not datasets:
-            logger.error(f"  ❌ None of {args.datasets} found in REAL_DATASETS.")
-            logger.error(f"  Available: {list(REAL_DATASETS.keys())}")
+            logger.error(f"  ❌ None of {DATASETS_TO_RUN} found in REAL_DATASETS.")
             sys.exit(1)
         logger.info(f"  Evaluating subset: {list(datasets.keys())}")
     else:
         datasets = REAL_DATASETS
         logger.info(f"  Evaluating all {len(datasets)} datasets")
 
-    # ── Run evaluation ──────────────────────────────────────────────────────
-    logger.info(f"\n  🚀 Starting evaluation: {label}\n")
-    t_start = time.time()
+    # ── Batch Evaluation Loop ───────────────────────────────────────────────
+    for idx, (label, ckpt, cfg) in enumerate(MODELS_TO_TEST, 1):
+        logger.info(f"\n{'─'*80}")
+        logger.info(f"▶️  EVALUATING MODEL [{idx}/{len(MODELS_TO_TEST)}]")
+        logger.info(f"   Label : {label}")
+        logger.info(f"   Ckpt  : {ckpt}")
+        logger.info(f"   Config: {cfg}")
+        logger.info(f"{'─'*80}\n")
 
-    results_df = evaluate_all_datasets(
-        model=model,
-        device=device,
-        scaler=scaler,
-        sub_day=sub_day,
-        logger=logger,
-        context_len=args.ctx_len,
-        datasets=datasets,
-    )
+        try:
+            # Load model
+            model, scaler, sub_day, n_assets = load_checkpoint(ckpt, cfg, device, logger)
 
-    total_time = time.time() - t_start
+            # Evaluate
+            logger.info(f"\n  🚀 Starting evaluation: {label}\n")
+            t_start = time.time()
+            
+            results_df = evaluate_all_datasets(
+                model=model,
+                device=device,
+                scaler=scaler,
+                sub_day=sub_day,
+                logger=logger,
+                context_len=CONTEXT_LEN,
+                datasets=datasets,
+            )
+            
+            total_time = time.time() - t_start
 
-    # ── Console summary ─────────────────────────────────────────────────────
-    print_results_table(results_df, label, logger)
-    logger.info(f"  ⏱️  Total evaluation time: {total_time:.1f}s")
+            # Display Results
+            print_results_table(results_df, label, logger)
+            logger.info(f"  ⏱️  Total evaluation time: {total_time:.1f}s")
 
-    # ── CSV output ──────────────────────────────────────────────────────────
-    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-    csv_path = os.path.join(out_dir, f'eval_unified_{label}_{ts}.csv')
-    results_df.to_csv(csv_path, index=False, float_format='%.6f')
-    logger.info(f"  📄 CSV  → {csv_path}")
+            # Save Output
+            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+            
+            csv_path = os.path.join(out_dir, f'eval_unified_{label}_{ts}.csv')
+            results_df.to_csv(csv_path, index=False, float_format='%.6f')
+            logger.info(f"  📄 CSV  → {csv_path}")
 
-    # ── LaTeX output ────────────────────────────────────────────────────────
-    latex_str = generate_latex_table(results_df, label)
-    tex_path = os.path.join(out_dir, f'eval_unified_{label}_{ts}.tex')
-    with open(tex_path, 'w') as f:
-        f.write(latex_str)
-    logger.info(f"  📄 LaTeX → {tex_path}")
+            latex_str = generate_latex_table(results_df, label)
+            tex_path = os.path.join(out_dir, f'eval_unified_{label}_{ts}.tex')
+            with open(tex_path, 'w') as f:
+                f.write(latex_str)
+            logger.info(f"  📄 LaTeX → {tex_path}")
 
-    # ── Print LaTeX to console ──────────────────────────────────────────────
-    logger.info(f"\n{'─'*70}")
-    logger.info(f"LaTeX Table (copy to paper):")
-    logger.info(f"{'─'*70}")
-    for line in latex_str.split('\n'):
-        logger.info(f"  {line}")
-    logger.info(f"{'─'*70}\n")
+            # Safe cleanup to avoid cross-evaluation OOM
+            del model
+            if device.type == 'cuda':
+                torch.cuda.empty_cache()
 
-    logger.info("  ✅ Done.\n")
+            logger.info(f"\n  ✅ Finished: {label}\n")
+
+        except Exception as e:
+            logger.error(f"\n  ❌ Evaluation failed for: {label}")
+            logger.error(f"  {traceback.format_exc()}\n")
+            continue
+
+    logger.info(f"{'='*80}")
+    logger.info(f"🎉 All {len(MODELS_TO_TEST)} models evaluated.")
+    logger.info(f"{'='*80}\n")
 
 
 if __name__ == '__main__':
