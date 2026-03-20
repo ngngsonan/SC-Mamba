@@ -435,31 +435,31 @@ def multivariate_predict_aligned(
 
 class RobustZeroShotDataset(torch.utils.data.Dataset):
     """
-    Robust multivariate dataset loader for zero-shot evaluation.
+    Robust multivariate dataset for zero-shot N>1 evaluation.
 
-    Why this exists (instead of MultivariateRealDataset):
-      MultivariateRealDataset applies strict NaN filtering (>50% NaN → drop series).
-      This causes failures on sparse/asynchronous datasets (e.g., weather: ALL 3010
-      series dropped). RobustZeroShotDataset uses ffill/bfill/fillna(0) instead,
-      ensuring NO series are dropped and evaluation succeeds on all 17 GluonTS datasets.
+    Handles sparse/asynchronous PKLs gracefully:
+      - Selects only col_indices columns from the pivot table.
+      - Drops rows that are fully NaN (not series).
+      - Applies ffill → bfill → fillna(0.0) to handle remaining gaps.
+      - Stores self.values (full time-series array) for MASE denominator.
 
-    Apple-to-Apple Guarantee:
-      - Same PKL source as univariate evaluation (GluonTS data).
-      - Same test split (last pred_len timesteps).
-      - Same cardinality (M predictions for M series).
-      - Imputation (ffill/bfill) is standard in financial time-series and
-        does NOT alter the test window targets.
+    Contrast with MultivariateRealDataset (used for training), which drops
+    any series with >50% NaN timestamps. That strategy is correct for
+    spectral training but fatal for evaluation on sparse datasets (e.g. weather
+    has 3010 sub-daily series that appear sparse when pivoted to daily grid).
+
+    Port of RobustZeroShotDataset from benchmark/14_eval_all.py.
     """
 
     def __init__(self, pkl_path, pred_len, context_len, split, col_indices, sub_day=False):
-        import pickle
+        import pickle as _pickle
         self.pred_len = pred_len
         self.context_len = context_len
         self.N_assets = len(col_indices)
         self.sub_day = sub_day
 
         with open(pkl_path, 'rb') as f:
-            df_raw = pickle.load(f)
+            df_raw = _pickle.load(f)
 
         df_flat = df_raw.reset_index()
         df_piv = df_flat.pivot_table(
@@ -475,6 +475,7 @@ class RobustZeroShotDataset(torch.utils.data.Dataset):
             )
 
         df_sub = df_piv.iloc[:, valid_idx]
+        # Drop only fully-empty rows (not series) — preserves cardinality.
         df_sub = df_sub.dropna(how='all')
         df_sub = df_sub.ffill().bfill().fillna(0.0)
 
@@ -499,8 +500,11 @@ class RobustZeroShotDataset(torch.utils.data.Dataset):
         n_test = pred_len
         min_train_required = context_len + pred_len
 
-        # Guarantee at least 1 testing window even if T_total < min_train_required + pred_len
-        ideal_train_end = T_total - n_test - min(max(pred_len, 30), max(pred_len, T_total - n_test - min_train_required))
+        # Guarantee at least 1 testing window for short/asynchronous datasets.
+        ideal_train_end = T_total - n_test - min(
+            max(pred_len, 30),
+            max(pred_len, T_total - n_test - min_train_required)
+        )
         train_end = max(ideal_train_end, min_train_required)
 
         if train_end > T_total:
@@ -510,13 +514,6 @@ class RobustZeroShotDataset(torch.utils.data.Dataset):
             self._start = 0
             self._end = train_end
             self.n_windows = max(0, train_end - context_len - pred_len + 1)
-        elif split == 'val':
-            n_val = min(max(pred_len, 30), max(pred_len, T_total - n_test - min_train_required))
-            val_target_start = T_total - n_test - n_val
-            val_target_end = T_total - n_test
-            self._start = max(0, val_target_start - context_len)
-            self._end = val_target_end
-            self.n_windows = max(0, n_val - pred_len + 1)
         else:  # test
             test_target_start = T_total - n_test
             self._start = max(0, test_target_start - context_len)
@@ -524,7 +521,6 @@ class RobustZeroShotDataset(torch.utils.data.Dataset):
             self.n_windows = max(0, n_test - pred_len + 1)
 
         self._split = split
-        self._val_target_start = T_total - n_test - min(max(pred_len, 30), max(pred_len, T_total - n_test - min_train_required))
         self._test_target_start = T_total - n_test
 
     def __len__(self):
@@ -535,8 +531,7 @@ class RobustZeroShotDataset(torch.utils.data.Dataset):
             abs_start = self._start + idx
             ctx_end = abs_start + self.context_len
         else:
-            target_start = (self._val_target_start if self._split == 'val'
-                            else self._test_target_start) + idx
+            target_start = self._test_target_start + idx
             abs_start = max(0, target_start - self.context_len)
             ctx_end = target_start
 
@@ -578,11 +573,14 @@ class RobustZeroShotDataset(torch.utils.data.Dataset):
         }
 
 
-def get_total_assets(pkl_path):
-    """Count total unique series in a PKL file without loading into MultivariateRealDataset."""
-    import pickle
+def get_total_assets(pkl_path: str) -> int:
+    """
+    Count total unique series in a PKL file without NaN filtering.
+    Used to determine M for chunking — must match baseline cardinality exactly.
+    """
+    import pickle as _pickle
     with open(pkl_path, 'rb') as f:
-        df = pickle.load(f)
+        df = _pickle.load(f)
     return len(df.index.get_level_values('Series').unique())
 
 
@@ -599,21 +597,22 @@ def multivariate_predict_chunked(
     Asset-dimension Chunking: evaluate a multivariate model (N_assets > 1)
     on ANY dataset regardless of its number of series M.
 
-    Uses RobustZeroShotDataset (ffill/bfill/fillna) instead of MultivariateRealDataset
-    (strict NaN drop) to ensure all datasets can be evaluated without series loss.
-
     Algorithm:
-      1. Probe PKL to find total_M (raw series count, no filtering).
-      2. Split M assets into K = ⌈M/N⌉ chunks of size N.
+      1. Count M via get_total_assets() — NO NaN filtering, preserving cardinality
+         parity with univariate baselines.
+      2. Split M assets into K = ceil(M/N) chunks of size N.
       3. Last chunk gets circular-padded if M % N != 0.
-      4. Forward pass each chunk via RobustZeroShotDataset.
-      5. Discard padded predictions, concatenate M real predictions.
+      4. Each chunk is loaded via RobustZeroShotDataset (ffill/bfill, no series drop).
+      5. Forward pass each chunk, discard padded column predictions.
+      6. MASE denominator uses full train-split history (train_ds.values[:,ai]),
+         not a single sliding window — matching utilsforecast.losses.mase semantics.
+      7. Concatenate all M real predictions for metric computation.
 
-    Apple-to-Apple Guarantee:
-      - Same PKL data source as N=1 univariate evaluation.
-      - Same test split (last pred_len timesteps).
-      - Identical cardinality: M predictions for M series.
-      - MASE computed with utilsforecast.losses.mase (same as Mamba4Cast).
+    Invariants:
+      - M_eval == M_raw (no series dropped during evaluation).
+      - MASE denominator is length-equivalent to the training series.
+      - Output schema (batch_train_dfs, batch_pred_dfs) is identical whether
+        using univariate_per_series or multivariate_chunked routes.
     """
     import math
 
@@ -633,9 +632,12 @@ def multivariate_predict_chunked(
     if context_len is None:
         context_len = MAX_LENGTH
 
-    # ── Step 1: Probe dataset for total_M (no NaN filtering) ───────────────
+    # ── Step 1: Probe M without NaN filtering ──────────────────────────────
+    # CRITICAL: must use raw series count, NOT MultivariateRealDataset which
+    # drops series with >50% NaN. Dropping series breaks cardinality parity
+    # with baselines that evaluate on full M assets.
     try:
-        total_M = get_total_assets(pkl_path)
+        actual_M = get_total_assets(pkl_path)
     except Exception as e:
         print(f"  ⚠️ [Chunked Eval] Probe failed for {dataset}: {e}")
         return [], []
@@ -644,13 +646,13 @@ def multivariate_predict_chunked(
     batch_pred_dfs  = []
     model.eval()
 
-    K = math.ceil(total_M / N)
-    print(f"  [eval] Chunked Multivariate: {dataset} has {total_M} assets → {K} chunks of {N}.")
+    K = math.ceil(actual_M / N)
+    print(f"  [eval] Chunked Multivariate: {dataset} has {actual_M} assets → {K} chunks of {N}.")
 
     with torch.no_grad():
         for k in range(K):
             start_idx = k * N
-            end_idx   = min((k + 1) * N, total_M)
+            end_idx   = min((k + 1) * N, actual_M)
             valid_len = end_idx - start_idx
 
             # Build col_indices for this chunk (circular-pad if last chunk is short)
@@ -659,23 +661,28 @@ def multivariate_predict_chunked(
                 pad_needed = N - valid_len
                 col_indices += [col_indices[i % valid_len] for i in range(pad_needed)]
 
+            # Use RobustZeroShotDataset: ffill/bfill, no series drop, self.values for MASE.
             try:
-                test_ds  = RobustZeroShotDataset(pkl_path, pred_len, context_len, 'test',  col_indices, sub_day)
-                train_ds = RobustZeroShotDataset(pkl_path, pred_len, context_len, 'train', col_indices, sub_day)
+                test_ds  = RobustZeroShotDataset(
+                    pkl_path, pred_len, context_len, 'test', col_indices, sub_day
+                )
+                train_ds = RobustZeroShotDataset(
+                    pkl_path, pred_len, context_len, 'train', col_indices, sub_day
+                )
             except Exception as e:
-                print(f"  ⚠️ [Chunked Eval] Chunk {k+1}/{K} load failed: {e}")
+                print(f"  ⚠️ [Chunked Eval] Chunk {k} load failed: {e}")
                 continue
 
             if len(test_ds) == 0:
-                print(f"  ⚠️ [Chunked Eval] Chunk {k+1}/{K}: 0 test windows. Skip.")
+                print(f"  ⚠️ [Chunked Eval] Chunk {k}: 0 test windows. Skipping.")
                 continue
 
             for win_idx in range(len(test_ds)):
                 sample = test_ds[win_idx]
-                x    = sample['x'].to(device)      # (ctx, N)
-                y    = sample['y'].to(device)       # (pred, N)
-                ts_x = sample['ts_x'].to(device)    # (ctx, ts_dim)
-                ts_y = sample['ts_y'].to(device)    # (pred, ts_dim)
+                x    = sample['x'].to(device)     # (ctx, N)
+                y    = sample['y'].to(device)      # (pred, N)
+                ts_x = sample['ts_x'].to(device)  # (ctx, ts_dim)
+                ts_y = sample['ts_y'].to(device)  # (pred, ts_dim)
 
                 T_pred = y.shape[0]
 
@@ -694,19 +701,22 @@ def multivariate_predict_chunked(
                 output = model(data, prediction_length=T_pred)
                 scaled_mu, scaled_sigma2 = scale_data(output, scaler)
 
-                mu_np  = scaled_mu.detach().cpu().numpy()       # (N, T_pred)
-                sig_np = scaled_sigma2.detach().cpu().numpy()    # (N, T_pred)
-                y_np   = y.cpu().numpy()                         # (T_pred, N)
+                mu_np  = scaled_mu.detach().cpu().numpy()     # (N, T_pred)
+                sig_np = scaled_sigma2.detach().cpu().numpy() # (N, T_pred)
+                y_np   = y.cpu().numpy()                      # (T_pred, N)
 
                 # Only collect REAL assets (discard circular-padded duplicates)
                 for asset_in_chunk in range(valid_len):
                     asset_i_global = start_idx + asset_in_chunk
                     asset_id = f"{dataset}_asset_{asset_i_global}"
 
-                    # MASE denominator: use full training history for this asset
+                    # MASE denominator: full training series for this asset.
+                    # train_ds.values contains the complete train-split value array.
+                    # This is semantically equivalent to the per-series train context
+                    # used by utilsforecast.losses.mase and matches univariate baseline protocol.
                     train_hist_i = train_ds.values[:, asset_in_chunk]
                     if len(train_hist_i) == 0:
-                        train_hist_i = x[:, asset_in_chunk].cpu().numpy()
+                        train_hist_i = x[:, asset_in_chunk].cpu().numpy()  # fallback
 
                     batch_train_dfs.append(pd.DataFrame({
                         'id':     [asset_id] * len(train_hist_i),
